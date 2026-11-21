@@ -815,9 +815,10 @@ function getDistanceMeters(
  * ------------------------------------------------------------------ */
 
 export default function Navigation() {
-  const {
+    const {
     destination,
     mode,
+    highContrast,
     travelMode,
     setTravelMode,
     paused,
@@ -826,6 +827,8 @@ export default function Navigation() {
     startLocation,
     setStartLocation,
   } = useApp();
+
+  const contrastEnabled = highContrast || mode === 'lowvision';
 
   const [currentLocation, setCurrentLocation] =
     useState<RoutePoint | null>(null);
@@ -1856,17 +1859,23 @@ console.log('Current GPS:', currentLocation);
       ====================================================== */}
 
       <div className="absolute inset-x-0 top-0 z-20 px-4 pt-4">
-        <div className="flex items-center gap-2 rounded-2xl bg-white/95 px-4 py-3 shadow-card backdrop-blur">
+        <div
+  className={`flex items-center gap-2 rounded-2xl px-4 py-3 shadow-card backdrop-blur ${
+    contrastEnabled
+      ? 'border border-yellow-300 bg-black'
+      : 'bg-white/95'
+  }`}
+>
           <span className="text-lg">
             {destination.place ? destination.place.emoji : '📍'}
           </span>
 
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-slate-400">
+            <p className={`text-xs ${contrastEnabled ? 'text-yellow-300' : 'text-slate-400'}`}>
               {isPreview ? 'Route to' : 'Navigating to'}
             </p>
 
-            <p className="truncate text-sm font-bold text-slate-900">
+            <p className={`truncate text-sm font-bold ${contrastEnabled ? 'text-white' : 'text-slate-900'}`}>
               {destination.name}
             </p>
           </div>
@@ -1875,7 +1884,11 @@ console.log('Current GPS:', currentLocation);
             type="button"
             onClick={() => go('home')}
             aria-label="Exit navigation"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+            className={`flex h-8 w-8 items-center justify-center rounded-full ${
+  contrastEnabled
+    ? 'border border-yellow-300 bg-black text-yellow-300'
+    : 'bg-slate-100 text-slate-500'
+}`}
           >
             <X size={16} />
           </button>
@@ -1886,13 +1899,23 @@ console.log('Current GPS:', currentLocation);
           GPS STATUS
       ====================================================== */}
 
-      <div className="absolute left-4 top-20 z-20 rounded-2xl bg-white/95 px-3 py-2 shadow-card backdrop-blur">
+      <div
+  className={`absolute left-4 top-20 z-20 rounded-2xl px-3 py-2 shadow-card backdrop-blur ${
+    contrastEnabled
+      ? 'border border-yellow-300 bg-black'
+      : 'bg-white/95'
+  }`}
+>
         <div className="flex items-center gap-2">
           <LocateFixed size={16} className="text-accessible-600" />
 
           <div>
-            <p className="text-xs font-bold text-slate-800">GPS active</p>
-            <p className="text-[10px] text-slate-500">Live location</p>
+            <p className={`text-xs font-bold ${contrastEnabled ? 'text-white' : 'text-slate-800'}`}>
+  GPS active
+</p>
+<p className={`text-[10px] ${contrastEnabled ? 'text-yellow-300' : 'text-slate-500'}`}>
+  Live location
+</p>
           </div>
         </div>
       </div>
@@ -1909,27 +1932,48 @@ console.log('Current GPS:', currentLocation);
           NEXT TURN CARD (navigating only)
       ====================================================== */}
 
-      {/* COMPACT NEXT TURN CARD */}
+            {/* COMPACT NEXT TURN CARD */}
       {!isPreview && (
-  <div className="absolute inset-x-4 top-32 z-20 flex justify-center">
-    <div className="flex items-center gap-3 rounded-2xl bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-xl font-black text-white">
-        {arrived ? '✓' : currentStep ? maneuverSymbol(currentStep) : '↑'}
-      </div>
+        <div className="absolute inset-x-4 top-32 z-20 flex justify-center">
+          <div
+            className={`flex items-center gap-3 rounded-2xl px-4 py-3 shadow-lg backdrop-blur ${
+              contrastEnabled
+                ? 'border border-yellow-300 bg-black'
+                : 'bg-white/95'
+            }`}
+          >
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl font-black ${
+                contrastEnabled
+                  ? 'border border-yellow-300 bg-black text-yellow-300'
+                  : 'bg-primary-600 text-white'
+              }`}
+            >
+              {arrived ? '✓' : currentStep ? maneuverSymbol(currentStep) : '↑'}
+            </div>
 
-      <div>
-        <p className="text-sm font-extrabold text-slate-900">
-          {instructionTitle}
-        </p>
-        <p className="text-xs font-semibold text-slate-500">
-          {arrived
-            ? 'Destination reached'
-            : formatDistance(instructionDistance)}
-        </p>
-      </div>
-    </div>
-  </div>
-)}
+            <div>
+              <p
+                className={`text-sm font-extrabold ${
+                  contrastEnabled ? 'text-white' : 'text-slate-900'
+                }`}
+              >
+                {instructionTitle}
+              </p>
+
+              <p
+                className={`text-xs font-semibold ${
+                  contrastEnabled ? 'text-yellow-300' : 'text-slate-500'
+                }`}
+              >
+                {arrived
+                  ? 'Destination reached'
+                  : formatDistance(instructionDistance)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ======================================================
           BOTTOM SHEET
@@ -1938,55 +1982,68 @@ console.log('Current GPS:', currentLocation);
 <div className="absolute inset-x-0 bottom-0 z-30 flex max-h-[45%] flex-col">
         {/* Recenter (after the user drags the map while navigating) */}
         {!isPreview && !following && (
-          <button
-            type="button"
-            onClick={() => setFollowing(true)}
-            className="absolute -top-14 right-4 flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-extrabold text-primary-700 shadow-sheet"
-          >
-            <LocateFixed size={18} />
-            Recenter
-          </button>
-        )}
+  <button
+    type="button"
+    onClick={() => setFollowing(true)}
+    className={`absolute -top-14 right-4 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-extrabold shadow-sheet ${
+      contrastEnabled
+        ? 'border-2 border-yellow-300 bg-black text-yellow-300'
+        : 'bg-white text-primary-700'
+    }`}
+  >
+    <LocateFixed size={18} />
+    Recenter
+  </button>
+)}
 
-<div className="overflow-y-auto rounded-t-3xl bg-white px-3 py-2 pb-3 shadow-sheet">
+<div
+  className={`overflow-y-auto rounded-t-3xl px-3 py-2 pb-3 shadow-sheet ${
+    contrastEnabled
+      ? 'border border-yellow-300 bg-black text-white'
+      : 'bg-white'
+  }`}
+>
           <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" />
 
           {isPreview ? (
             <>
 
             {/* START LOCATION */}
-
 <div className="mb-4">
-  <p className="mb-2 text-sm font-bold text-slate-800">
+  <p
+    className={`mb-2 text-sm font-bold ${
+      contrastEnabled ? 'text-white' : 'text-slate-800'
+    }`}
+  >
     Starting location
   </p>
 
   <button
-  type="button"
-  onClick={() => {
-    setUseLiveStart(true);
-    setCustomStartLocation(null);
-
-    setRoutes({
-      vehicle: [],
-      wheelchair: [],
-    });
-
-    setStartLocationName('');
-    setStartSearchQuery('');
-    setStartSearchResults([]);
-    hasRouteRef.current = false;
-  }}
+    type="button"
+    onClick={() => {
+      setUseLiveStart(true);
+      setCustomStartLocation(null);
+      setRoutes({
+        vehicle: [],
+        wheelchair: [],
+      });
+      setStartLocationName('');
+      setStartSearchQuery('');
+      setStartSearchResults([]);
+      hasRouteRef.current = false;
+    }}
     className={`mb-2 w-full rounded-xl border-2 p-3 text-left ${
-      useLiveStart
-        ? 'border-primary-600 bg-primary-50'
-        : 'border-slate-200 bg-white'
+      contrastEnabled
+        ? 'border-yellow-300 bg-black'
+        : useLiveStart
+          ? 'border-primary-600 bg-primary-50'
+          : 'border-slate-200 bg-white'
     }`}
   >
-    <p className="text-sm font-bold text-slate-800">
+    <p className={`text-sm font-bold ${contrastEnabled ? 'text-white' : 'text-slate-800'}`}>
       📍 Use my current location
     </p>
-    <p className="text-xs text-slate-500">
+    <p className={`text-xs ${contrastEnabled ? 'text-yellow-300' : 'text-slate-500'}`}>
       {loadingLocation
         ? 'Getting your location...'
         : currentLocation
@@ -2006,16 +2063,19 @@ console.log('Current GPS:', currentLocation);
       hasRouteRef.current = false;
     }}
     className={`mb-2 w-full rounded-xl border-2 p-3 text-left ${
-      !useLiveStart
-        ? 'border-primary-600 bg-primary-50'
-        : 'border-slate-200 bg-white'
+      contrastEnabled
+        ? 'border-yellow-300 bg-black'
+        : !useLiveStart
+          ? 'border-primary-600 bg-primary-50'
+          : 'border-slate-200 bg-white'
     }`}
   >
-    <p className="text-sm font-bold text-slate-800">
+    <p className={`text-sm font-bold ${contrastEnabled ? 'text-white' : 'text-slate-800'}`}>
       🗺️ Choose another starting location
     </p>
+
     {startLocationName && (
-      <p className="mt-1 text-xs text-slate-500">
+      <p className={`mt-1 text-xs ${contrastEnabled ? 'text-yellow-300' : 'text-slate-500'}`}>
         Selected: {startLocationName}
       </p>
     )}
@@ -2028,17 +2088,21 @@ console.log('Current GPS:', currentLocation);
         value={startSearchQuery}
         onChange={(e) => setStartSearchQuery(e.target.value)}
         placeholder="Search starting location..."
-        className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-primary-600"
+        className={`w-full rounded-xl border px-3 py-3 text-sm outline-none focus:border-primary-600 ${
+          contrastEnabled
+            ? 'border-yellow-300 bg-black text-white placeholder:text-slate-300'
+            : 'border-slate-300 bg-white text-slate-900'
+        }`}
       />
 
       {searchingStart && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className={`mt-2 text-xs ${contrastEnabled ? 'text-white' : 'text-slate-500'}`}>
           Searching locations...
         </p>
       )}
 
       {startSearchError && (
-        <p className="mt-2 text-xs text-red-600">
+        <p className={`mt-2 text-xs ${contrastEnabled ? 'text-yellow-300' : 'text-red-600'}`}>
           {startSearchError}
         </p>
       )}
@@ -2058,12 +2122,16 @@ console.log('Current GPS:', currentLocation);
               setStartSearchResults([]);
               hasRouteRef.current = false;
             }}
-            className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left"
+            className={`w-full rounded-xl border p-3 text-left ${
+              contrastEnabled
+                ? 'border-yellow-300 bg-black'
+                : 'border-slate-200 bg-white'
+            }`}
           >
-            <p className="text-sm font-bold text-slate-800">
+            <p className={`text-sm font-bold ${contrastEnabled ? 'text-white' : 'text-slate-800'}`}>
               📍 {result.name}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className={`mt-1 text-xs ${contrastEnabled ? 'text-yellow-300' : 'text-slate-500'}`}>
               {result.displayName}
             </p>
           </button>
@@ -2071,179 +2139,250 @@ console.log('Current GPS:', currentLocation);
       </div>
 
       {!customStartLocation && (
-        <p className="mt-2 text-xs font-medium text-amber-600">
+        <p className={`mt-2 text-xs font-medium ${contrastEnabled ? 'text-yellow-300' : 'text-amber-600'}`}>
           Search and select a starting location to calculate your route.
         </p>
       )}
     </>
   )}
 </div>
-              {/* MODE: CAR vs WHEELCHAIR */}
+              
+{/* MODE: CAR vs WHEELCHAIR */}
 
-              <p className="mb-2 text-sm font-bold text-slate-800">
-                Choose how to travel
+<p
+  className={`mb-2 text-sm font-bold ${
+    contrastEnabled ? 'text-white' : 'text-slate-800'
+  }`}
+>
+  Choose how to travel
+</p>
+
+<div className="grid grid-cols-2 gap-2">
+  {(
+    [
+      { value: 'vehicle', label: 'Car / taxi', icon: '🚗' },
+      { value: 'wheelchair', label: 'Wheelchair', icon: '♿' },
+    ] as const
+  ).map((option) => {
+    const selected = activeMode === option.value;
+    const route =
+      routes[option.value][selected ? safeIdx : 0] ?? null;
+    const verdict =
+      option.value === 'wheelchair' && route
+        ? wheelchairVerdict(route.distance)
+        : null;
+
+    return (
+      <button
+        key={option.value}
+        type="button"
+        onClick={() => {
+          setTravelMode(option.value);
+          setSelectedIdx(0);
+        }}
+        aria-pressed={selected}
+        className={`rounded-2xl border-2 p-3 text-left ${
+          contrastEnabled
+            ? 'border-yellow-300 bg-black'
+            : selected
+              ? 'border-primary-600 bg-primary-50'
+              : 'border-slate-200 bg-white'
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <span
+            className={`text-sm font-extrabold ${
+              contrastEnabled ? 'text-white' : 'text-slate-900'
+            }`}
+          >
+            {option.icon} {option.label}
+          </span>
+
+          {recommended === option.value && route && (
+            <span className="rounded-full bg-primary-600 px-2 py-0.5 text-[10px] font-bold text-white">
+              Best
+            </span>
+          )}
+        </div>
+
+        {route ? (
+          <>
+            <p
+              className={`mt-2 text-lg font-black ${
+                contrastEnabled ? 'text-white' : 'text-slate-900'
+              }`}
+            >
+              {formatDuration(route.duration)}
+            </p>
+
+            <p
+              className={`text-xs font-semibold ${
+                contrastEnabled ? 'text-white' : 'text-slate-500'
+              }`}
+            >
+              {formatDistance(route.distance)}
+            </p>
+
+            {verdict ? (
+              <span
+                className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  contrastEnabled
+                    ? 'border border-yellow-300 bg-black text-yellow-300'
+                    : verdict.className
+                }`}
+              >
+                {verdict.label}
+              </span>
+            ) : (
+              <span
+                className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  contrastEnabled
+                    ? 'border border-yellow-300 bg-black text-yellow-300'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                Door to door
+              </span>
+            )}
+          </>
+        ) : (
+          <p
+            className={`mt-2 text-xs font-semibold ${
+              contrastEnabled ? 'text-white' : 'text-slate-500'
+            }`}
+          >
+            {loadingRoute ? 'Calculating...' : 'Route unavailable'}
+          </p>
+        )}
+      </button>
+    );
+  })}
+</div>
+
+{wheelchairDistance !== null &&
+  wheelchairDistance > WHEELCHAIR_MAX_M && (
+    <p
+      className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ${
+        contrastEnabled
+          ? 'border border-yellow-300 bg-black text-white'
+          : 'bg-red-50 text-red-700'
+      }`}
+    >
+      This is {formatDistance(wheelchairDistance)} away. That is
+      too far to travel by wheelchair alone, so a car or an
+      accessible taxi is the practical choice.
+    </p>
+  )}
+
+{wheelchairDistance !== null &&
+  wheelchairDistance > WHEELCHAIR_COMFORT_M &&
+  wheelchairDistance <= WHEELCHAIR_MAX_M && (
+    <p
+      className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ${
+        contrastEnabled
+          ? 'border border-yellow-300 bg-black text-white'
+          : 'bg-amber-50 text-amber-700'
+      }`}
+    >
+      Doable by wheelchair, but long. Check the battery or your
+      energy, and consider a car for part of the way.
+    </p>
+  )}
+
+{/* ROUTE OPTIONS */}
+
+{activeList.length > 1 && (
+  <div className="mt-4">
+    <p
+      className={`mb-2 text-sm font-bold ${
+        contrastEnabled ? 'text-white' : 'text-slate-800'
+      }`}
+    >
+      Routes
+    </p>
+
+    <div className="space-y-2">
+      {activeList.map((route, i) => {
+        const via = viaName(route);
+
+        return (
+          <button
+            key={`opt-${i}`}
+            type="button"
+            onClick={() => setSelectedIdx(i)}
+            aria-pressed={i === safeIdx}
+            className={`flex w-full items-center justify-between gap-3 rounded-2xl border-2 px-4 py-3 text-left ${
+              contrastEnabled
+                ? 'border-yellow-300 bg-black'
+                : i === safeIdx
+                  ? 'border-primary-600 bg-primary-50'
+                  : 'border-slate-200 bg-white'
+            }`}
+          >
+            <div className="min-w-0">
+              <p
+                className={`truncate text-sm font-extrabold ${
+                  contrastEnabled ? 'text-white' : 'text-slate-900'
+                }`}
+              >
+                {via ? `via ${via}` : `Route ${i + 1}`}
               </p>
 
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    { value: 'vehicle', label: 'Car / taxi', icon: '🚗' },
-                    { value: 'wheelchair', label: 'Wheelchair', icon: '♿' },
-                  ] as const
-                ).map((option) => {
-                  const selected = activeMode === option.value;
-                  const route =
-                    routes[option.value][selected ? safeIdx : 0] ?? null;
-                  const verdict =
-                    option.value === 'wheelchair' && route
-                      ? wheelchairVerdict(route.distance)
-                      : null;
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => {
-                        setTravelMode(option.value);
-                        setSelectedIdx(0);
-                      }}
-                      aria-pressed={selected}
-                      className={`rounded-2xl border-2 p-3 text-left ${
-                        selected
-                          ? 'border-primary-600 bg-primary-50'
-                          : 'border-slate-200 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-extrabold text-slate-900">
-                          {option.icon} {option.label}
-                        </span>
-
-                        {recommended === option.value && route && (
-                          <span className="rounded-full bg-primary-600 px-2 py-0.5 text-[10px] font-bold text-white">
-                            Best
-                          </span>
-                        )}
-                      </div>
-
-                      {route ? (
-                        <>
-                          <p className="mt-2 text-lg font-black text-slate-900">
-                            {formatDuration(route.duration)}
-                          </p>
-
-                          <p className="text-xs font-semibold text-slate-500">
-                            {formatDistance(route.distance)}
-                          </p>
-
-                          {verdict ? (
-                            <span
-                              className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${verdict.className}`}
-                            >
-                              {verdict.label}
-                            </span>
-                          ) : (
-                            <span className="mt-2 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                              Door to door
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <p className="mt-2 text-xs font-semibold text-slate-500">
-                          {loadingRoute ? 'Calculating...' : 'Route unavailable'}
-                        </p>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {wheelchairDistance !== null &&
-                wheelchairDistance > WHEELCHAIR_MAX_M && (
-                  <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                    This is {formatDistance(wheelchairDistance)} away. That is
-                    too far to travel by wheelchair alone, so a car or an
-                    accessible taxi is the practical choice.
-                  </p>
-                )}
-
-              {wheelchairDistance !== null &&
-                wheelchairDistance > WHEELCHAIR_COMFORT_M &&
-                wheelchairDistance <= WHEELCHAIR_MAX_M && (
-                  <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                    Doable by wheelchair, but long. Check the battery or your
-                    energy, and consider a car for part of the way.
-                  </p>
-                )}
-
-              {/* ROUTE OPTIONS */}
-
-              {activeList.length > 1 && (
-                <div className="mt-4">
-                  <p className="mb-2 text-sm font-bold text-slate-800">
-                    Routes
-                  </p>
-
-                  <div className="space-y-2">
-                    {activeList.map((route, i) => {
-                      const via = viaName(route);
-
-                      return (
-                        <button
-                          key={`opt-${i}`}
-                          type="button"
-                          onClick={() => setSelectedIdx(i)}
-                          aria-pressed={i === safeIdx}
-                          className={`flex w-full items-center justify-between gap-3 rounded-2xl border-2 px-4 py-3 text-left ${
-                            i === safeIdx
-                              ? 'border-primary-600 bg-primary-50'
-                              : 'border-slate-200 bg-white'
-                          }`}
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-extrabold text-slate-900">
-                              {via ? `via ${via}` : `Route ${i + 1}`}
-                            </p>
-
-                            <p className="text-xs font-semibold text-slate-500">
-                              {formatDistance(route.distance)}
-                              {i === fastestIdx ? ' · Fastest' : ''}
-                              {i === shortestIdx && i !== fastestIdx
-                                ? ' · Shortest'
-                                : ''}
-                            </p>
-                          </div>
-
-                          <p className="shrink-0 text-lg font-black text-slate-900">
-                            {formatDuration(route.duration)}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <p className="mt-3 text-[11px] text-slate-400">
-                {activeMode === 'vehicle'
-                  ? `Car time includes a x${CAR_TRAFFIC_FACTOR} city-traffic allowance; live traffic is not available.`
-                  : activeRoute?.source === 'ORS'
-                    ? activeRoute.avoidsObstacles
-                      ? `Wheelchair route avoids slopes over ${WHEELCHAIR_MAX_INCLINE_PCT}% and kerbs over ${Math.round(WHEELCHAIR_MAX_KERB_M * 100)} cm where map data exists. Time is from the OpenRouteService wheelchair profile.`
-                      : 'Wheelchair time comes from the OpenRouteService wheelchair profile. No route met the slope/kerb limits, so they were relaxed.'
-                    : ORS_API_KEY
-                      ? `OpenRouteService key found but the request failed: ${lastOrsError || 'unknown error'}. Using the free server (4 km/h estimate).`
-                      : 'No OpenRouteService key found, so the wheelchair time assumes about 4 km/h. Check that .env is in the accessnav folder and restart npm run dev.'}
+              <p
+                className={`text-xs font-semibold ${
+                  contrastEnabled ? 'text-white' : 'text-slate-500'
+                }`}
+              >
+                {formatDistance(route.distance)}
+                {i === fastestIdx ? ' · Fastest' : ''}
+                {i === shortestIdx && i !== fastestIdx
+                  ? ' · Shortest'
+                  : ''}
               </p>
+            </div>
 
-              <button
+            <p
+              className={`shrink-0 text-lg font-black ${
+                contrastEnabled ? 'text-yellow-300' : 'text-slate-900'
+              }`}
+            >
+              {formatDuration(route.duration)}
+            </p>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+)}
+
+<p
+  className={`mt-3 text-[11px] ${
+    contrastEnabled ? 'text-white' : 'text-slate-400'
+  }`}
+>
+  {activeMode === 'vehicle'
+    ? `Car time includes a x${CAR_TRAFFIC_FACTOR} city-traffic allowance; live traffic is not available.`
+    : activeRoute?.source === 'ORS'
+      ? activeRoute.avoidsObstacles
+        ? `Wheelchair route avoids slopes over ${WHEELCHAIR_MAX_INCLINE_PCT}% and kerbs over ${Math.round(WHEELCHAIR_MAX_KERB_M * 100)} cm where map data exists. Time is from the OpenRouteService wheelchair profile.`
+        : 'Wheelchair time comes from the OpenRouteService wheelchair profile. No route met the slope/kerb limits, so they were relaxed.'
+      : ORS_API_KEY
+        ? `OpenRouteService key found but the request failed: ${lastOrsError || 'unknown error'}. Using the free server (4 km/h estimate).`
+        : 'No OpenRouteService key found, so the wheelchair time assumes about 4 km/h. Check that .env is in the accessnav folder and restart npm run dev.'}
+</p>
+
+<button
   type="button"
   disabled={!activeRoute || !routeOrigin || loadingRoute}
   onClick={() => {
     setFollowing(useLiveStart);
     setPhase('navigating');
   }}
-  className="mt-4 w-full rounded-2xl bg-primary-600 px-4 py-4 text-base font-extrabold text-white shadow-sm disabled:opacity-50"
+  className={`mt-4 w-full rounded-2xl px-4 py-4 text-base font-extrabold shadow-sm disabled:opacity-50 ${
+    contrastEnabled
+      ? 'border-2 border-yellow-300 bg-yellow-300 text-black'
+      : 'bg-primary-600 text-white'
+  }`}
 >
   {loadingRoute
     ? 'Calculating route...'
@@ -2251,34 +2390,48 @@ console.log('Current GPS:', currentLocation);
       ? `Start navigation · ${formatDuration(activeRoute.duration)}`
       : 'Route unavailable for this mode'}
 </button>
-            </>
-          ) : (
-            <>
-              {/* CURRENT NAVIGATION */}
 
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-600 text-white">
-                  <NavigationIcon size={24} />
-                </div>
+</>
+) : (
+<>
 
-                <div className="min-w-0 flex-1">
-                  <p className="text-lg font-extrabold text-slate-900">
-                    {currentStep
-                      ? getInstructionText(currentStep)
-                      : instructionTitle}
-                  </p>
+{/* CURRENT NAVIGATION */}
+              
+{/* CURRENT NAVIGATION */}
 
-                  <p className="text-sm text-slate-500">
-                    {arrived
-                      ? `You are at or very close to ${destination.name}.`
-                      : currentStep
-                        ? `${formatDistance(instructionDistance)} until the next maneuver.`
-                        : 'Your position is being updated using GPS.'}
-                  </p>
-                </div>
-              </div>
+<div className="flex items-start gap-3">
+  <div
+    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+      contrastEnabled
+        ? 'border border-yellow-300 bg-black text-yellow-300'
+        : 'bg-primary-600 text-white'
+    }`}
+  >
+    <NavigationIcon size={24} />
+  </div>
 
-              {currentStep && (
+  <div className="min-w-0 flex-1">
+    <p className={`text-lg font-extrabold ${
+      contrastEnabled ? 'text-white' : 'text-slate-900'
+    }`}>
+      {currentStep
+        ? getInstructionText(currentStep)
+        : instructionTitle}
+    </p>
+
+    <p className={`text-sm ${
+      contrastEnabled ? 'text-white' : 'text-slate-500'
+    }`}>
+      {arrived
+        ? `You are at or very close to ${destination.name}.`
+        : currentStep
+          ? `${formatDistance(instructionDistance)} until the next maneuver.`
+          : 'Your position is being updated using GPS.'}
+    </p>
+  </div>
+</div>
+
+{currentStep && (
   <button
     type="button"
     onClick={() => {
@@ -2288,7 +2441,11 @@ console.log('Current GPS:', currentLocation);
       }
     }}
     disabled={currentStepIndex >= routeSteps.length - 1}
-    className="mt-4 w-full rounded-2xl bg-primary-600 px-4 py-3.5 text-sm font-extrabold text-white shadow-sm disabled:opacity-50"
+    className={`mt-4 w-full rounded-2xl px-4 py-3.5 text-sm font-extrabold disabled:opacity-50 ${
+      contrastEnabled
+        ? 'border-2 border-yellow-300 bg-yellow-300 text-black'
+        : 'bg-primary-600 text-white'
+    }`}
   >
     {currentStepIndex < routeSteps.length - 1
       ? 'Next step →'
@@ -2296,124 +2453,160 @@ console.log('Current GPS:', currentLocation);
   </button>
 )}
 
-              {/* ACCESSIBILITY STATUS */}
+{/* ACCESSIBILITY STATUS */}
 
-              <div className="mt-2 flex items-center gap-2 rounded-xl bg-accessible-50 px-3 py-2">
+<div className={`mt-2 flex items-center gap-2 rounded-xl px-3 py-2 ${
+  contrastEnabled
+    ? 'border border-yellow-300 bg-black'
+    : 'bg-accessible-50'
+}`}>
   <span className="text-lg">
     {mode === 'wheelchair' ? '♿' : '👁'}
   </span>
 
-  <p className="flex-1 text-xs font-semibold leading-snug text-accessible-800">
+  <p className={`flex-1 text-xs font-semibold leading-snug ${
+    contrastEnabled ? 'text-white' : 'text-accessible-800'
+  }`}>
     {mode === 'wheelchair'
       ? 'Wheelchair mode is active. Accessibility information will be used to identify potential obstacles and accessible features for this destination.'
       : 'Low-vision mode is active. Use the high-contrast map and voice guidance features where available.'}
   </p>
 </div>
 
-              {/* VOICE GUIDANCE CONTROLS */}
+{/* VOICE GUIDANCE CONTROLS */}
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setVoiceEnabled((enabled) => !enabled)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-primary-50 px-3 py-3 text-sm font-bold text-primary-700"
-                  aria-pressed={voiceEnabled}
-                >
-                  {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
-                  {voiceEnabled ? 'Mute Voice' : 'Enable Voice'}
-                </button>
+<div className="mt-3 grid grid-cols-2 gap-2">
+  <button
+    type="button"
+    onClick={() => setVoiceEnabled((enabled) => !enabled)}
+    className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold ${
+      contrastEnabled
+        ? 'border border-yellow-300 bg-black text-yellow-300'
+        : 'bg-primary-50 text-primary-700'
+    }`}
+    aria-pressed={voiceEnabled}
+  >
+    {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+    {voiceEnabled ? 'Mute Voice' : 'Enable Voice'}
+  </button>
 
-                <button
-                  type="button"
-                  disabled={!voiceEnabled || paused}
-                  onClick={async () => {
-                    const step = currentStepIndex >= 0
-                      ? routeSteps[currentStepIndex]
-                      : null;
-                    const instruction = arrived
-                      ? `You have arrived at ${destination.name}.`
-                      : step
-                        ? `${maneuverTitle(step)}${
-                            step.name && step.name.trim()
-                              ? ` onto ${step.name.trim()}`
-                              : ''
-                          }.`
-                        : 'Continue on your route.';
+  <button
+    type="button"
+    disabled={!voiceEnabled || paused}
+    onClick={async () => {
+      const step = currentStepIndex >= 0
+        ? routeSteps[currentStepIndex]
+        : null;
 
-                    try {
-                      await TextToSpeech.stop();
-                      await TextToSpeech.speak({
-                        text: instruction,
-                        lang: 'en-IN',
-                        rate: 0.9,
-                        pitch: 1.0,
-                        volume: 1.0,
-                      });
-                    } catch (error) {
-                      console.error('Could not repeat instruction:', error);
-                    }
-                  }}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
-                >
-                  <RefreshCw size={18} />
-                  Repeat
-                </button>
-              </div>
+      const instruction = arrived
+        ? `You have arrived at ${destination.name}.`
+        : step
+          ? `${maneuverTitle(step)}${
+              step.name && step.name.trim()
+                ? ` onto ${step.name.trim()}`
+                : ''
+            }.`
+          : 'Continue on your route.';
 
-              {/* ACTION BUTTONS */}
+      try {
+        await TextToSpeech.stop();
+        await TextToSpeech.speak({
+          text: instruction,
+          lang: 'en-IN',
+          rate: 0.9,
+          pitch: 1.0,
+          volume: 1.0,
+        });
+      } catch (error) {
+        console.error('Could not repeat instruction:', error);
+      }
+    }}
+    className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold disabled:opacity-50 ${
+      contrastEnabled
+        ? 'border border-yellow-300 bg-black text-white'
+        : 'bg-slate-100 text-slate-700'
+    }`}
+  >
+    <RefreshCw size={18} />
+    Repeat
+  </button>
+</div>
 
-              <div className="mt-2 grid grid-cols-4 gap-2">
+{/* ACTION BUTTONS */}
+
+<div className="mt-2 grid grid-cols-4 gap-2">
   <NavAction
     icon={paused ? <Play size={16} /> : <Pause size={16} />}
     label={paused ? 'Resume' : 'Pause'}
     onClick={() => setPaused(!paused)}
+    highContrast={contrastEnabled}
   />
 
   <NavAction
     icon={<RefreshCw size={16} />}
     label="Recalc"
     onClick={recalculate}
+    highContrast={contrastEnabled}
   />
 
   <NavAction
     icon={<FileText size={16} />}
     label="Details"
     onClick={() => go('details')}
+    highContrast={contrastEnabled}
   />
 
   <NavAction
     icon={<AlertTriangle size={16} />}
     label="Report"
     onClick={() => go('report')}
+    highContrast={contrastEnabled}
   />
 </div>
 
 <button
   type="button"
   onClick={() => setPhase('preview')}
-  className="mt-2 w-full rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"
+  className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-bold ${
+    contrastEnabled
+      ? 'border border-yellow-300 bg-black text-yellow-300'
+      : 'bg-slate-100 text-slate-700'
+  }`}
 >
   Change route or travel mode
 </button>
 
 {paused && (
-  <div className="mt-2 rounded-xl bg-primary-50 px-3 py-2 text-center">
-    <p className="text-xs font-bold text-primary-700">
+  <div className={`mt-2 rounded-xl px-3 py-2 text-center ${
+    contrastEnabled
+      ? 'border border-yellow-300 bg-black'
+      : 'bg-primary-50'
+  }`}>
+    <p className={`text-xs font-bold ${
+      contrastEnabled ? 'text-yellow-300' : 'text-primary-700'
+    }`}>
       Navigation paused
     </p>
-    <p className="text-[10px] text-primary-600">
+    <p className={`text-[10px] ${
+      contrastEnabled ? 'text-white' : 'text-primary-600'
+    }`}>
       GPS tracking remains active.
     </p>
   </div>
 )}
 
 {arrived && (
-  <div className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-accessible-50 py-2 text-xs font-bold text-accessible-700">
+  <div className={`mt-2 flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold ${
+    contrastEnabled
+      ? 'border border-yellow-300 bg-black text-yellow-300'
+      : 'bg-accessible-50 text-accessible-700'
+  }`}>
     <Check size={14} strokeWidth={3} />
     You have arrived
   </div>
 )}
-            </>
+
+</>
           )}
         </div>
       </div>
@@ -2422,7 +2615,7 @@ console.log('Current GPS:', currentLocation);
           PAUSE OVERLAY
       ====================================================== */}
 
-      {paused && !isPreview && (
+{paused && !isPreview && (
         <Overlay onClose={() => setPaused(false)}>
           <div className="mb-4 flex justify-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-100">
@@ -2458,20 +2651,28 @@ function NavAction({
   icon,
   label,
   onClick,
+  highContrast = false,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  highContrast?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-1 rounded-2xl bg-slate-50 py-2.5 text-slate-700 active:scale-95"
+      className={`flex flex-col items-center gap-1 rounded-2xl py-2.5 active:scale-95 ${
+        highContrast
+          ? 'border border-yellow-300 bg-black text-yellow-300'
+          : 'bg-slate-50 text-slate-700'
+      }`}
     >
       {icon}
-
       <span className="text-xs font-semibold">{label}</span>
     </button>
   );
 }
+
+
+    

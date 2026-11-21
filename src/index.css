@@ -64,9 +64,7 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
-.leaflet-pane {
-  z-index: auto !important;
-}
+
 
 .leaflet-tile-pane {
   z-index: 1 !important;
@@ -101,26 +99,227 @@ body {
   z-index: 10 !important;
 }
 
-/* ACCESSNAV - LARGE TEXT ACCESSIBILITY */
-html.large-text {
-  font-size: 120% !important;
+
+/* ==========================================
+   ACCESSNAV - GLOBAL HIGH CONTRAST
+========================================== */
+
+html.high-contrast {
+  color-scheme: dark;
+  background: #000000 !important;
 }
 
-html.large-text body {
+html.high-contrast body,
+html.high-contrast #root {
+  background-color: #000000 !important;
+  color: #ffffff;
+}
+
+/* Cards and light panels become black.
+   Do not override buttons or their contents. */
+html.high-contrast :not(button):not(button *)[class*="bg-white"],
+html.high-contrast :not(button):not(button *)[class*="bg-slate-"],
+html.high-contrast :not(button):not(button *)[class*="bg-gray-"],
+html.high-contrast :not(button):not(button *)[class*="bg-zinc-"],
+html.high-contrast :not(button):not(button *)[class*="bg-neutral-"],
+html.high-contrast :not(button):not(button *)[class*="bg-blue-"],
+html.high-contrast :not(button):not(button *)[class*="bg-green-"],
+html.high-contrast :not(button):not(button *)[class*="bg-red-"],
+html.high-contrast :not(button):not(button *)[class*="bg-orange-"],
+html.high-contrast :not(button):not(button *)[class*="bg-purple-"],
+html.high-contrast :not(button):not(button *)[class*="bg-indigo-"],
+html.high-contrast :not(button):not(button *)[class*="bg-primary-"] {
+  background-color: #080808 !important;
+}
+
+/* Text on non-button elements */
+html.high-contrast :not(button):not(button *)[class*="text-slate-"],
+html.high-contrast :not(button):not(button *)[class*="text-gray-"],
+html.high-contrast :not(button):not(button *)[class*="text-zinc-"],
+html.high-contrast :not(button):not(button *)[class*="text-neutral-"],
+html.high-contrast :not(button):not(button *)[class*="text-black"] {
+  color: #ffffff !important;
+}
+
+/* General readable text */
+html.high-contrast p,
+html.high-contrast h1,
+html.high-contrast h2,
+html.high-contrast h3,
+html.high-contrast h4,
+html.high-contrast h5,
+html.high-contrast h6,
+html.high-contrast label,
+html.high-contrast li,
+html.high-contrast small,
+html.high-contrast strong {
+  color: #ffffff;
+}
+
+/* Borders */
+html.high-contrast [class*="border-"],
+html.high-contrast hr {
+  border-color: #ffffff !important;
+}
+
+/* Buttons retain their individual component colours */
+html.high-contrast button {
+  opacity: 1 !important;
+  border-width: 2px;
+  border-color: #ffffff;
+}
+
+/* Form controls */
+html.high-contrast input,
+html.high-contrast textarea,
+html.high-contrast select,
+html.high-contrast option {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+  caret-color: #ffff00;
+}
+
+html.high-contrast input::placeholder,
+html.high-contrast textarea::placeholder {
+  color: #dddddd !important;
+  opacity: 1 !important;
+}
+
+/* Disabled buttons */
+html.high-contrast button:disabled,
+html.high-contrast [role="button"][aria-disabled="true"] {
+  background-color: #333333 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+  opacity: 1 !important;
+}
+
+/* Focus visibility */
+html.high-contrast :focus-visible {
+  outline: 3px solid #00ffff !important;
+  outline-offset: 3px !important;
+}
+
+/* Links */
+html.high-contrast a {
+  color: #00ffff;
+}
+
+/* Leaflet controls */
+html.high-contrast .leaflet-control,
+html.high-contrast .leaflet-popup-content-wrapper,
+html.high-contrast .leaflet-popup-tip,
+html.high-contrast .leaflet-tooltip,
+html.high-contrast .leaflet-bar a,
+html.high-contrast .leaflet-control-attribution {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #ffffff !important;
+}
+
+html.high-contrast .leaflet-bar a {
+  color: #ffff00 !important;
+}
+
+html.high-contrast .leaflet-control-attribution a,
+html.high-contrast .leaflet-popup-content a {
+  color: #00ffff !important;
+}
+
+/* Map visibility */
+html.high-contrast .leaflet-tile {
+  filter: contrast(1.35) saturate(1.2);
+}
+
+/* High Contrast + Large Text */
+html.high-contrast.large-text body {
   font-size: 1.1rem;
   line-height: 1.6;
 }
-
-html.large-text button,
-html.large-text input,
-html.large-text textarea,
-html.large-text select {
-  font-size: inherit;
+html.high-contrast .bottom-sheet {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #fde047;
 }
 
-html.large-text p,
-html.large-text span,
-html.large-text label,
-html.large-text li {
-  line-height: 1.6;
+html.high-contrast .bottom-sheet .bg-white {
+  background-color: #000000 !important;
+}
+
+html.high-contrast .bottom-sheet .text-slate-900,
+html.high-contrast .bottom-sheet .text-slate-700,
+html.high-contrast .bottom-sheet .text-slate-600,
+html.high-contrast .bottom-sheet .text-slate-500 {
+  color: #ffffff !important;
+}
+/* Routes screen - High Contrast */
+html.high-contrast .routes-screen.high-contrast-screen {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen .bg-white,
+html.high-contrast .routes-screen.high-contrast-screen .bg-slate-50,
+html.high-contrast .routes-screen.high-contrast-screen .bg-slate-100,
+html.high-contrast .routes-screen.high-contrast-screen .bg-blue-50,
+html.high-contrast .routes-screen.high-contrast-screen .bg-amber-50,
+html.high-contrast .routes-screen.high-contrast-screen .bg-emerald-50,
+html.high-contrast .routes-screen.high-contrast-screen .bg-emerald-50\/40,
+html.high-contrast .routes-screen.high-contrast-screen .bg-primary-50,
+html.high-contrast .routes-screen.high-contrast-screen .bg-primary-100 {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen h1,
+html.high-contrast .routes-screen.high-contrast-screen h2,
+html.high-contrast .routes-screen.high-contrast-screen h3,
+html.high-contrast .routes-screen.high-contrast-screen p,
+html.high-contrast .routes-screen.high-contrast-screen span,
+html.high-contrast .routes-screen.high-contrast-screen label {
+  color: #ffffff !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen input {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #fde047 !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen input::placeholder {
+  color: #d1d5db !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen button:not(.bg-primary-600) {
+  border-color: #fde047 !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen .bg-primary-600 {
+  background-color: #fde047 !important;
+  color: #000000 !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen .bg-primary-600 svg {
+  color: #000000 !important;
+}
+
+html.high-contrast .routes-screen.high-contrast-screen .border-slate-200,
+html.high-contrast .routes-screen.high-contrast-screen .border-emerald-200,
+html.high-contrast .routes-screen.high-contrast-screen .border-blue-200 {
+  border-color: #fde047 !important;
+}
+/* Destination warning card - High Contrast */
+html.high-contrast .bottom-sheet .bg-warning-50 {
+  background-color: #000000 !important;
+  border: 2px solid #fde047 !important;
+  color: #ffffff !important;
+}
+
+html.high-contrast .bottom-sheet .bg-warning-50 * {
+  color: #ffffff !important;
+}
+
+html.high-contrast .bottom-sheet .bg-warning-50 svg {
+  color: #fde047 !important;
 }

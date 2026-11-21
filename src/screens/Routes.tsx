@@ -401,16 +401,18 @@ function RouteMap({
 
 export default function Routes() {
   const {
-    destination,
-    startLocation,
-    setStartLocation,
-    mode,
-    preferences,
-    selectedRoute,
-    setSelectedRoute,
-    go,
-  } = useApp();
+  destination,
+  startLocation,
+  setStartLocation,
+  mode,
+  highContrast,
+  preferences,
+  selectedRoute,
+  setSelectedRoute,
+  go,
+} = useApp();
 
+const contrastEnabled = highContrast || mode === 'lowvision';
   const [currentLocation, setCurrentLocation] =
     useState<[number, number] | null>(null);
 
@@ -1059,7 +1061,7 @@ useEffect(() => {
 
   if (!destination) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-100 px-6">
+      <div className={`routes-screen flex h-full w-full items-center justify-center px-6 ${contrastEnabled ? 'high-contrast-screen' : 'bg-slate-100'}`}>
         <div className="w-full rounded-3xl bg-white p-6 text-center shadow-card">
           <MapPin
             size={36}
@@ -1091,7 +1093,7 @@ useEffect(() => {
    */
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-50">
+    <div className={`routes-screen relative flex h-full min-h-0 w-full flex-col overflow-hidden ${contrastEnabled ? 'high-contrast-screen' : 'bg-slate-50'}`}>
 
       {/* HEADER */}
 
@@ -1459,251 +1461,335 @@ useEffect(() => {
             </div>
           )}
 
-          {/* ROUTE CARDS */}
+          
+{/* ROUTE CARDS */}
 
-          {!routeLoading && routeCards.length > 0 && (
-            <div className="space-y-3">
-              {routeCards.map((route) => {
-                const selected =
-                  route.id === selectedRoute;
+{!routeLoading && routeCards.length > 0 && (
+  <div className="space-y-3">
+    {routeCards.map((route) => {
+      const selected = route.id === selectedRoute;
 
-                const analyzedRoute =
-  getBackendRoute(
-    analyzedRoutes,
-    route.id,
-  ) ??
-  (route.id === 'accessible'
-    ? analyzedRoutes[0] ?? null
-    : null);
+      const analyzedRoute =
+        getBackendRoute(analyzedRoutes, route.id) ??
+        (route.id === 'accessible'
+          ? analyzedRoutes[0] ?? null
+          : null);
 
-                const backendRoute =
-                  analyzedRoute ??
-                  getBackendRoute(
-                    backendRoutes,
-                    route.id,
-                  );
+      const backendRoute =
+        analyzedRoute ??
+        getBackendRoute(backendRoutes, route.id);
 
-                const accessibility =
-                  backendRoute?.accessibility;
+      const accessibility = backendRoute?.accessibility;
 
-                return (
-                  <button
-                    key={route.id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedRoute(route.id)
-                    }
-                    className={`w-full rounded-2xl border p-4 text-left transition ${
-                      selected
-                        ? route.id === 'accessible' &&
-                          hasAccessibilityData
-                          ? 'border-emerald-500 bg-emerald-50 shadow-md'
-                          : 'border-primary-500 bg-primary-50 shadow-md'
-                        : route.id === 'accessible' &&
-                          hasAccessibilityData
-                          ? 'border-emerald-200 bg-emerald-50/40 shadow-sm hover:border-emerald-300'
-                          : 'border-slate-200 bg-white shadow-sm hover:border-slate-300'
+      return (
+        <button
+          key={route.id}
+          type="button"
+          onClick={() => setSelectedRoute(route.id)}
+          className={`w-full rounded-2xl border p-4 text-left transition ${
+            contrastEnabled
+              ? 'border-yellow-300 bg-black text-white shadow-md'
+              : selected
+                ? route.id === 'accessible' && hasAccessibilityData
+                  ? 'border-emerald-500 bg-emerald-50 shadow-md'
+                  : 'border-primary-500 bg-primary-50 shadow-md'
+                : route.id === 'accessible' && hasAccessibilityData
+                  ? 'border-emerald-200 bg-emerald-50/40 shadow-sm hover:border-emerald-300'
+                  : 'border-slate-200 bg-white shadow-sm hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl shadow-sm ${
+                contrastEnabled
+                  ? 'border border-yellow-300 bg-black text-yellow-300'
+                  : 'bg-white'
+              }`}
+            >
+              {route.emoji}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3
+                    className={`text-base font-extrabold ${
+                      contrastEnabled ? 'text-white' : 'text-slate-900'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-2xl shadow-sm">
-                        {route.emoji}
-                      </div>
+                    {route.title}
+                  </h3>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h3 className="text-base font-extrabold text-slate-900">
-                              {route.title}
-                            </h3>
-
-                            <p className="mt-0.5 text-xs font-semibold text-primary-700">
-                              {route.tag}
-                            </p>
-
-                            {hasAccessibilityData &&
-                              route.id === 'accessible' && (
-                                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                                  <Accessibility size={14} />
-                                  Accessibility data available
-                                </div>
-                              )}
-                          </div>
-
-                          {selected && (
-                            <CheckCircle2
-                              size={23}
-                              className={`shrink-0 ${
-                                route.id === 'accessible' &&
-                                hasAccessibilityData
-                                  ? 'text-emerald-600'
-                                  : 'text-primary-600'
-                              }`}
-                            />
-                          )}
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">
-                          <span className="flex items-center gap-1.5">
-                            <MapPin size={16} />
-                            {route.distanceKm.toFixed(1)} km
-                          </span>
-
-                          <span className="flex items-center gap-1.5">
-                            <Clock3 size={16} />
-                            {Math.max(
-                              1,
-                              Math.round(route.durationMin),
-                            )}{' '}
-                            min
-                          </span>
-                        </div>
-
-                        {accessibility && (
-                          <div className="mt-3 rounded-xl bg-emerald-50 px-3 py-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-emerald-800">
-                                Accessibility score
-                              </span>
-
-                              <span className="text-sm font-extrabold text-emerald-700">
-                                {accessibility.score}/100
-                              </span>
-                            </div>
-
-                            <p className="mt-1 text-xs text-emerald-700">
-                              {accessibility.summary}
-                            </p>
-
-                            {accessibility.preferences &&
-                              accessibility.preferences.length > 0 && (
-                                <div className="mt-2 space-y-1 border-t border-emerald-200 pt-2">
-                                  {accessibility.preferences.map(
-                                    (item, index) => (
-                                      <div
-                                        key={`${item.preference}-${index}`}
-                                        className="flex items-start justify-between gap-2 text-xs text-emerald-800"
-                                      >
-                                        <span>
-                                          {item.preference}
-                                        </span>
-                                        <span className="font-semibold">
-                                          {item.status}
-                                        </span>
-                                      </div>
-                                    ),
-                                  )}
-                                </div>
-                              )}
-                          </div>
-                        )}
-
-                        <div className="mt-3 space-y-1.5">
-                          {route.features
-                            .slice(0, 3)
-                            .map((feature, index) => (
-                              <div
-                                key={`${route.id}-${index}`}
-                                className="flex items-start gap-2 text-xs text-slate-600"
-                              >
-                                {hasAccessibilityData &&
-                                route.id === 'accessible' ? (
-                                  <Accessibility
-                                    size={14}
-                                    className="mt-0.5 shrink-0 text-emerald-600"
-                                  />
-                                ) : (
-                                  <Footprints
-                                    size={14}
-                                    className="mt-0.5 shrink-0 text-slate-500"
-                                  />
-                                )}
-
-                                <span>{feature}</span>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* NO ROUTES */}
-
-          {!routeLoading &&
-            !routeError &&
-            routeCards.length === 0 && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm">
-                <RouteIcon
-                  size={30}
-                  className="mx-auto text-slate-400"
-                />
-
-                <h3 className="mt-3 font-bold text-slate-800">
-                  No route options yet
-                </h3>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  We are still trying to calculate a road route.
-                </p>
-              </div>
-            )}
-
-          {/* ROUTE INSTRUCTIONS */}
-
-          <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm">
-            <h3 className="mb-3 text-sm font-extrabold text-slate-900">
-              Route instructions
-            </h3>
-
-            <div className="space-y-3">
-              {routeSteps.map((step, index) => {
-                const type = step.maneuver?.type;
-                const modifier = step.maneuver?.modifier;
-
-                let instruction = 'Continue straight';
-
-                if (type === 'arrive') {
-                  instruction = 'Arrive at destination';
-                } else if (modifier === 'left') {
-                  instruction = 'Turn left';
-                } else if (modifier === 'right') {
-                  instruction = 'Turn right';
-                } else if (modifier === 'slight left') {
-                  instruction = 'Slight left';
-                } else if (modifier === 'slight right') {
-                  instruction = 'Slight right';
-                } else if (modifier === 'uturn') {
-                  instruction = 'Make a U-turn';
-                }
-
-                return (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 rounded-xl bg-slate-50 p-3"
+                  <p
+                    className={`mt-0.5 text-xs font-semibold ${
+                      contrastEnabled ? 'text-yellow-300' : 'text-primary-700'
+                    }`}
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 font-bold text-primary-700">
-                      {index + 1}
-                    </div>
+                    {route.tag}
+                  </p>
 
-                    <div className="min-w-0">
-                      <div className="font-bold text-slate-900">
-                        {instruction}
+                  {hasAccessibilityData &&
+                    route.id === 'accessible' && (
+                      <div
+                        className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${
+                          contrastEnabled
+                            ? 'border border-yellow-300 bg-black text-yellow-300'
+                            : 'bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        <Accessibility size={14} />
+                        Accessibility data available
                       </div>
+                    )}
+                </div>
 
-                      <div className="text-xs text-slate-500">
-                        {Math.round(step.distance)} m
-                        {step.name ? ` • ${step.name}` : ''}
-                      </div>
-                    </div>
+                {selected && (
+                  <CheckCircle2
+                    size={23}
+                    className={`shrink-0 ${
+                      contrastEnabled
+                        ? 'text-yellow-300'
+                        : route.id === 'accessible' && hasAccessibilityData
+                          ? 'text-emerald-600'
+                          : 'text-primary-600'
+                    }`}
+                  />
+                )}
+              </div>
+
+              <div
+                className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${
+                  contrastEnabled ? 'text-white' : 'text-slate-600'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <MapPin size={16} />
+                  {route.distanceKm.toFixed(1)} km
+                </span>
+
+                <span className="flex items-center gap-1.5">
+                  <Clock3 size={16} />
+                  {Math.max(1, Math.round(route.durationMin))} min
+                </span>
+              </div>
+
+              {accessibility && (
+                <div
+                  className={`mt-3 rounded-xl px-3 py-2 ${
+                    contrastEnabled
+                      ? 'border border-yellow-300 bg-black'
+                      : 'bg-emerald-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-xs font-bold ${
+                        contrastEnabled ? 'text-white' : 'text-emerald-800'
+                      }`}
+                    >
+                      Accessibility score
+                    </span>
+
+                    <span
+                      className={`text-sm font-extrabold ${
+                        contrastEnabled
+                          ? 'text-yellow-300'
+                          : 'text-emerald-700'
+                      }`}
+                    >
+                      {accessibility.score}/100
+                    </span>
                   </div>
-                );
-              })}
+
+                  <p
+                    className={`mt-1 text-xs ${
+                      contrastEnabled ? 'text-white' : 'text-emerald-700'
+                    }`}
+                  >
+                    {accessibility.summary}
+                  </p>
+
+                  {accessibility.preferences &&
+                    accessibility.preferences.length > 0 && (
+                      <div
+                        className={`mt-2 space-y-1 border-t pt-2 ${
+                          contrastEnabled
+                            ? 'border-yellow-300'
+                            : 'border-emerald-200'
+                        }`}
+                      >
+                        {accessibility.preferences.map((item, index) => (
+                          <div
+                            key={`${item.preference}-${index}`}
+                            className={`flex items-start justify-between gap-2 text-xs ${
+                              contrastEnabled
+                                ? 'text-white'
+                                : 'text-emerald-800'
+                            }`}
+                          >
+                            <span>{item.preference}</span>
+                            <span className="font-semibold">
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+              )}
+
+              <div className="mt-3 space-y-1.5">
+                {route.features.slice(0, 3).map((feature, index) => (
+                  <div
+                    key={`${route.id}-${index}`}
+                    className={`flex items-start gap-2 text-xs ${
+                      contrastEnabled ? 'text-white' : 'text-slate-600'
+                    }`}
+                  >
+                    {hasAccessibilityData && route.id === 'accessible' ? (
+                      <Accessibility
+                        size={14}
+                        className={`mt-0.5 shrink-0 ${
+                          contrastEnabled ? 'text-yellow-300' : 'text-emerald-600'
+                        }`}
+                      />
+                    ) : (
+                      <Footprints
+                        size={14}
+                        className={`mt-0.5 shrink-0 ${
+                          contrastEnabled ? 'text-yellow-300' : 'text-slate-500'
+                        }`}
+                      />
+                    )}
+
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        </button>
+      );
+    })}
+  </div>
+)}
+
+{/* NO ROUTES */}
+
+{!routeLoading && !routeError && routeCards.length === 0 && (
+  <div
+    className={`rounded-2xl border p-5 text-center shadow-sm ${
+      contrastEnabled
+        ? 'border-yellow-300 bg-black text-white'
+        : 'border-slate-200 bg-white'
+    }`}
+  >
+    <RouteIcon
+      size={30}
+      className={`mx-auto ${
+        contrastEnabled ? 'text-yellow-300' : 'text-slate-400'
+      }`}
+    />
+
+    <h3
+      className={`mt-3 font-bold ${
+        contrastEnabled ? 'text-white' : 'text-slate-800'
+      }`}
+    >
+      No route options yet
+    </h3>
+
+    <p
+      className={`mt-1 text-sm ${
+        contrastEnabled ? 'text-white' : 'text-slate-500'
+      }`}
+    >
+      We are still trying to calculate a road route.
+    </p>
+  </div>
+)}
+
+{/* ROUTE INSTRUCTIONS */}
+
+<div
+  className={`mt-4 rounded-2xl p-4 shadow-sm ${
+    contrastEnabled
+      ? 'border border-yellow-300 bg-black text-white'
+      : 'bg-white'
+  }`}
+>
+  <h3
+    className={`mb-3 text-sm font-extrabold ${
+      contrastEnabled ? 'text-white' : 'text-slate-900'
+    }`}
+  >
+    Route instructions
+  </h3>
+
+  <div className="space-y-3">
+    {routeSteps.map((step, index) => {
+      const type = step.maneuver?.type;
+      const modifier = step.maneuver?.modifier;
+
+      let instruction = 'Continue straight';
+
+      if (type === 'arrive') {
+        instruction = 'Arrive at destination';
+      } else if (modifier === 'left') {
+        instruction = 'Turn left';
+      } else if (modifier === 'right') {
+        instruction = 'Turn right';
+      } else if (modifier === 'slight left') {
+        instruction = 'Slight left';
+      } else if (modifier === 'slight right') {
+        instruction = 'Slight right';
+      } else if (modifier === 'uturn') {
+        instruction = 'Make a U-turn';
+      }
+
+      return (
+        <div
+          key={index}
+          className={`flex items-center gap-3 rounded-xl p-3 ${
+            contrastEnabled
+              ? 'border border-yellow-300 bg-black'
+              : 'bg-slate-50'
+          }`}
+        >
+          <div
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold ${
+              contrastEnabled
+                ? 'bg-yellow-300 text-black'
+                : 'bg-primary-100 text-primary-700'
+            }`}
+          >
+            {index + 1}
+          </div>
+
+          <div className="min-w-0">
+            <div
+              className={`font-bold ${
+                contrastEnabled ? 'text-white' : 'text-slate-900'
+              }`}
+            >
+              {instruction}
+            </div>
+
+            <div
+              className={`text-xs ${
+                contrastEnabled ? 'text-white' : 'text-slate-500'
+              }`}
+            >
+              {Math.round(step.distance)} m
+              {step.name ? ` • ${step.name}` : ''}
+            </div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</div>
+
 
           {/* ABOUT THIS ROUTE */}
 

@@ -542,6 +542,20 @@ export async function getNearbyReports(
   );
 }
 
+export async function getMapReports(
+  bounds: {
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  }
+): Promise<NearbyReport[]> {
+  return apiFetch(
+    `/api/reports/map?south=${bounds.south}&west=${bounds.west}&north=${bounds.north}&east=${bounds.east}`
+  );
+}
+
+
 export async function getReports() {
   return apiFetch("/api/reports");
 }

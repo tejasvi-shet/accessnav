@@ -33,11 +33,14 @@ import type { Place } from '@/types';
 
 export default function Destination() {
   const {
-    destination,
-    setDestination,
-    go,
-    mode,
-  } = useApp();
+  destination,
+  setDestination,
+  go,
+  mode,
+  highContrast,
+} = useApp();
+
+const contrastEnabled = highContrast || mode === 'lowvision';
 
 
   // ==========================================================

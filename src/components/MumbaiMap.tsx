@@ -8,6 +8,7 @@ import {
   Popup,
   Polyline,
   useMap,
+  useMapEvents,
 } from 'react-leaflet';
 
 import L from 'leaflet';
@@ -19,6 +20,7 @@ import type { AccessibilityMode } from '@/types';
 import {
   API_URL,
   getNearbyReports,
+  getMapReports,
   type NearbyReport,
 } from '@/api';
 
@@ -38,24 +40,87 @@ interface Props {
   highContrast?: boolean;
 }
 
+
 interface OSMPoint {
   id: string;
   osmId: number;
   osmType: string;
-  type: 'ramp' | 'stairs' | 'wheelchair_accessible';
+  type:
+    | 'ramp'
+    | 'stairs'
+    | 'wheelchair_accessible'
+    | 'elevator'
+    | 'entrance'
+    | 'crossing'
+    | 'other';
   name: string;
   latitude: number;
   longitude: number;
   description: string;
   source: string;
   tags?: Record<string, string>;
+  wheelchairStatus?: string;
+  tactilePaving?: string;
+  handrail?: string;
+  toiletsWheelchair?: string;
 }
+
 
 interface OSMResponse {
   success: boolean;
   source: string;
   count: number;
   points: OSMPoint[];
+}
+
+interface BackendOSMPlace {
+  id: string;
+  name: string;
+  area: string;
+  position: [number, number];
+  tags: string[];
+  warnings: string[];
+  wheelchair: boolean;
+  wheelchairStatus?: string;
+  ramp: boolean;
+  elevator: boolean;
+  accessibleEntrance: boolean;
+  clearCrossing: boolean;
+  tactilePaving?: string;
+  handrail?: string;
+  toiletsWheelchair?: string;
+  obstruction: boolean;
+  source?: string;
+}
+
+interface YTAFeature {
+  category: string;
+  subcategory: string;
+  detectionStatus: string;
+  surveyQuestion: string;
+  surveyAnswer: string;
+}
+
+interface BackendYTALocation {
+  id: string;
+  name: string;
+  locationType: string;
+  address: string;
+  city: string;
+  state: string;
+  district: string;
+  latitude: number;
+  longitude: number;
+  auditStatus: string;
+  features: YTAFeature[];
+  source: string;
+}
+
+interface YTAResponse {
+  success: boolean;
+  source: string;
+  count: number;
+  locations: BackendYTALocation[];
 }
 
 interface BackendPlace {
@@ -274,6 +339,57 @@ function MapController({
   return null;
 }
 
+function MapBoundsTracker({
+  onBoundsChange,
+  onZoomChange,
+}: {
+  onBoundsChange: (bounds: {
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  }) => void;
+  onZoomChange: (zoom: number) => void;
+}) {
+  const map = useMapEvents({
+    moveend: () => {
+      const bounds = map.getBounds();
+      onZoomChange(map.getZoom());
+
+      onBoundsChange({
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+        north: bounds.getNorth(),
+        east: bounds.getEast(),
+      });
+    },
+    zoomend: () => {
+      const bounds = map.getBounds();
+      onZoomChange(map.getZoom());
+
+      onBoundsChange({
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+        north: bounds.getNorth(),
+        east: bounds.getEast(),
+      });
+    },
+  });
+  useEffect(() => {
+    const bounds = map.getBounds();
+    onZoomChange(map.getZoom());
+  
+    onBoundsChange({
+      south: bounds.getSouth(),
+      west: bounds.getWest(),
+      north: bounds.getNorth(),
+      east: bounds.getEast(),
+    });
+  }, [map, onBoundsChange]);
+
+  return null;
+}
+
 function getRouteCoordinates(
   route: Props['route'],
 ): [number, number][] {
@@ -283,31 +399,96 @@ function getRouteCoordinates(
   return [];
 }
 
+
 function getOSMStyle(type: OSMPoint['type'], mode: AccessibilityMode) {
   const radius = mode === 'lowvision' ? 15 : 11;
 
-  switch (type) {
-    case 'ramp':
-      return {
-        color: '#047857',
-        fillColor: '#10b981',
-        radius,
-      };
+  const styles: Record<
+    string,
+    { color: string; fillColor: string }
+  > = {
+    ramp: {
+      color: '#047857',
+      fillColor: '#10b981',
+    },
+    stairs: {
+      color: '#991b1b',
+      fillColor: '#ef4444',
+    },
+    elevator: {
+      color: '#6d28d9',
+      fillColor: '#8b5cf6',
+    },
+    entrance: {
+      color: '#0369a1',
+      fillColor: '#0ea5e9',
+    },
+    crossing: {
+      color: '#b45309',
+      fillColor: '#f59e0b',
+    },
+    wheelchair_accessible: {
+      color: '#1e40af',
+      fillColor: '#3b82f6',
+    },
+    other: {
+      color: '#475569',
+      fillColor: '#94a3b8',
+    },
+  };
 
-    case 'stairs':
-      return {
-        color: '#991b1b',
-        fillColor: '#ef4444',
-        radius,
-      };
+  return {
+    ...(styles[type] ?? styles.other),
+    radius,
+  };
+}
 
-    case 'wheelchair_accessible':
-      return {
-        color: '#1e40af',
-        fillColor: '#3b82f6',
-        radius,
-      };
-  }
+function getMarkerStyle(
+  type: string,
+  mode: AccessibilityMode,
+) {
+  const styles: Record<
+    string,
+    { radius: number; color: string; fillColor: string }
+  > = {
+    warning: {
+      radius: 12,
+      color: '#92400e',
+      fillColor: '#f59e0b',
+    },
+    ramp: {
+      radius: 10,
+      color: '#047857',
+      fillColor: '#10b981',
+    },
+    elevator: {
+      radius: 10,
+      color: '#6d28d9',
+      fillColor: '#8b5cf6',
+    },
+    entrance: {
+      radius: 10,
+      color: '#0369a1',
+      fillColor: '#0ea5e9',
+    },
+    crossing: {
+      radius: 10,
+      color: '#b45309',
+      fillColor: '#f59e0b',
+    },
+    place: {
+      radius: 8,
+      color: '#1e293b',
+      fillColor: '#94a3b8',
+    },
+  };
+
+  const style = styles[type] ?? styles.place;
+
+  return {
+    ...style,
+    radius: mode === 'lowvision' ? style.radius + 4 : style.radius,
+  };
 }
 
 export default function MumbaiMap({
@@ -327,28 +508,74 @@ export default function MumbaiMap({
   const [loadingReports, setLoadingReports] = useState(false);
 
   const [osmPoints, setOsmPoints] = useState<OSMPoint[]>([]);
+  const [ytaLocations, setYtaLocations] = useState<BackendYTALocation[]>([]);
+const [loadingYTA, setLoadingYTA] = useState(false);
   const [loadingOSM, setLoadingOSM] = useState(false);
   const [osmError, setOsmError] = useState('');
+  const [mapBounds, setMapBounds] = useState<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  } | null>(null);
+  const [mapZoom, setMapZoom] = useState(14);
+
+  type AccessibilityFilter =
+  | 'all'
+  | 'ramps'
+  | 'elevators'
+  | 'entrances'
+  | 'crossings'
+  | 'obstacles'
+  | 'tactile_paths'
+  | 'toilets'
+  | 'parking'
+  | 'stairs_support';
+
+const [activeFilter, setActiveFilter] =
+  useState<AccessibilityFilter>('all');
+
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function fetchPlaces() {
-      setLoadingPlaces(true);
-      const places = await loadPlaces();
-
-      if (!cancelled) {
-        setBackendPlaces(places);
-        setLoadingPlaces(false);
+  
+    async function fetchReports() {
+      if (!mapBounds || mapZoom < 16) {
+        setCommunityReports([]);
+        return;
+      }
+  
+      try {
+        setLoadingReports(true);
+  
+        const reports = await getMapReports(mapBounds);
+  
+        if (!cancelled) {
+  const safeReports = Array.isArray(reports) ? reports : [];
+  setCommunityReports(safeReports);
+  console.log('Map community reports:', safeReports);
+}
+      } catch (error) {
+        console.error('Unable to load community reports:', error);
+  
+        if (!cancelled) {
+          setCommunityReports([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingReports(false);
+        }
       }
     }
-
-    fetchPlaces();
-
+  
+    fetchReports();
+  
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mapBounds, mapZoom]);
+  
 
   const places = useMemo(() => backendPlaces, [backendPlaces]);
 
@@ -375,9 +602,9 @@ export default function MumbaiMap({
     const controller = new AbortController();
 
     async function fetchOSMPoints() {
-      const latitude = destination?.[0] ?? MUMBAI_CENTER[0];
-      const longitude = destination?.[1] ?? MUMBAI_CENTER[1];
+      if (!mapBounds) return;
 
+const { south, west, north, east } = mapBounds;
       setLoadingOSM(true);
       setOsmError('');
 
@@ -387,8 +614,8 @@ export default function MumbaiMap({
 
       try {
         const url =
-          `${API_URL}/api/osm/accessibility?latitude=${latitude}` +
-          `&longitude=${longitude}&radius=1500`;
+  `${API_URL}/api/places/openstreetmap?south=${south}` +
+  `&west=${west}&north=${north}&east=${east}`;
 
         const response = await fetch(url, {
           signal: controller.signal,
@@ -398,21 +625,69 @@ export default function MumbaiMap({
           throw new Error(`OSM request failed: ${response.status}`);
         }
 
-        const data: OSMResponse = await response.json();
+        const data: BackendOSMPlace[] = await response.json();
 
-        if (!data.success || !Array.isArray(data.points)) {
-          throw new Error('Invalid OpenStreetMap response');
-        }
+if (!Array.isArray(data)) {
+  throw new Error('Invalid OpenStreetMap response');
+}
 
-        if (!cancelled) {
-          setOsmPoints(data.points);
-          setOsmError('');
-          console.log(
-            'OpenStreetMap loaded:',
-            data.points.length,
-            'points',
-          );
-        }
+
+const points: OSMPoint[] = data.map((place) => {
+  const [latitude, longitude] = place.position;
+
+  const osmMatch = place.id.match(
+    /^(?:osm-)?(node|way|relation)[/-](\d+)$/,
+  );
+
+  const type: OSMPoint['type'] = place.ramp
+    ? 'ramp'
+    : place.elevator
+      ? 'elevator'
+      : place.accessibleEntrance
+        ? 'entrance'
+        : place.clearCrossing
+          ? 'crossing'
+          : place.wheelchair
+            ? 'wheelchair_accessible'
+            : 'other';
+
+  const tags = Object.fromEntries(
+    place.tags.map((tag) => {
+      const separator = tag.indexOf('=');
+
+      return separator === -1
+        ? [tag, '']
+        : [tag.slice(0, separator), tag.slice(separator + 1)];
+    }),
+  );
+
+  return {
+    id: place.id,
+    osmId: osmMatch ? Number(osmMatch[2]) : 0,
+    osmType: osmMatch?.[1] ?? 'unknown',
+    type,
+    name: place.name,
+    latitude,
+    longitude,
+    description: [
+      place.area,
+      `Wheelchair: ${place.wheelchairStatus ?? 'unknown'}`,
+      ...place.warnings,
+    ].filter(Boolean).join(' · '),
+    source: 'OpenStreetMap',
+    tags,
+    wheelchairStatus: place.wheelchairStatus,
+    tactilePaving: place.tactilePaving,
+    handrail: place.handrail,
+    toiletsWheelchair: place.toiletsWheelchair,
+  };
+});
+
+if (!cancelled) {
+  setOsmPoints(points);
+  setOsmError('');
+  console.log('OpenStreetMap loaded:', points.length, 'points');
+}
       } catch (error) {
         if (!cancelled) {
           console.error('Unable to load OpenStreetMap data:', error);
@@ -438,7 +713,69 @@ export default function MumbaiMap({
       cancelled = true;
       controller.abort();
     };
-  }, [destination]);
+  }, [mapBounds]);
+    // Fetch Yes to Access locations for the visible map area.
+    useEffect(() => {
+      if (!mapBounds) return;
+  
+      const { south, west, north, east } = mapBounds;
+  
+      // The backend accepts map areas up to 5 degrees.
+      if (north - south > 5 || east - west > 5) {
+        setYtaLocations([]);
+        return;
+      }
+  
+      let cancelled = false;
+      const controller = new AbortController();
+  
+      async function fetchYTALocations() {
+        try {
+          setLoadingYTA(true);
+  
+          const url =
+            `${API_URL}/api/places/yes-to-access?south=${south}` +
+            `&west=${west}&north=${north}&east=${east}`;
+  
+          const response = await fetch(url, {
+            signal: controller.signal,
+          });
+  
+          if (!response.ok) {
+            throw new Error(`Yes to Access request failed: ${response.status}`);
+          }
+  
+          const data: YTAResponse = await response.json();
+  
+          if (!data.success || !Array.isArray(data.locations)) {
+            throw new Error('Invalid Yes to Access response');
+          }
+  
+          if (!cancelled) {
+            setYtaLocations(data.locations);
+            console.log(
+              'Yes to Access locations loaded:',
+              data.locations.length,
+            );
+          }
+        } catch (error) {
+          if (!cancelled && !controller.signal.aborted) {
+            console.error('Unable to load Yes to Access locations:', error);
+          }
+        } finally {
+          if (!cancelled) {
+            setLoadingYTA(false);
+          }
+        }
+      }
+  
+      fetchYTALocations();
+  
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }, [mapBounds]);
 
   // Fetch community reports only after a destination is selected.
   useEffect(() => {
@@ -461,7 +798,7 @@ export default function MumbaiMap({
         );
 
         if (!cancelled) {
-          setCommunityReports(reports);
+          setCommunityReports(Array.isArray(reports) ? reports : []);
           console.log('Community reports received:', reports);
         }
       } catch (error) {
@@ -506,6 +843,123 @@ export default function MumbaiMap({
 
   const routeCoordinates = getRouteCoordinates(route);
 
+  const filteredPlaces = useMemo(() => {
+    if (activeFilter === 'all') {
+      return visiblePlaces;
+    }
+
+    return visiblePlaces.filter((place) => {
+      switch (activeFilter) {
+        case 'ramps':
+          return place.ramp;
+        case 'elevators':
+          return place.elevator;
+        case 'entrances':
+          return place.accessibleEntrance;
+        case 'crossings':
+          return place.clearCrossing;
+        case 'obstacles':
+          return place.obstruction;
+        default:
+          return true;
+      }
+    });
+  }, [visiblePlaces, activeFilter]);
+
+  const filteredYTALocations = useMemo(() => {
+    if (activeFilter === 'all') {
+      return ytaLocations;
+    }
+  
+    const filterTerms: Record<Exclude<AccessibilityFilter, 'all'>, string[]> = {
+      ramps: ['ramp'],
+      elevators: ['elevator', 'lift'],
+      entrances: ['entrance', 'step-free', 'step free'],
+      crossings: ['crossing'],
+      obstacles: ['obstacle', 'obstruction', 'hazard'],
+      tactile_paths: ['tactile'],
+      toilets: ['toilet', 'washroom', 'restroom'],
+      parking: ['parking'],
+      stairs_support: ['stairs with support', 'stair support'],
+    };
+  
+    return ytaLocations.filter((location) =>
+      location.features.some((feature) => {
+        const status = feature.detectionStatus.toLowerCase();
+  
+        // Only include positively detected features.
+        if (!status.includes('detected') || status.includes('not detected')) {
+          return false;
+        }
+  
+        const featureText = [
+          feature.category,
+          feature.subcategory,
+          feature.detectionStatus,
+          feature.surveyQuestion,
+        ]
+          .join(' ')
+          .toLowerCase();
+  
+        return filterTerms[activeFilter].some((term) =>
+          featureText.includes(term),
+        );
+      }),
+    );
+  }, [ytaLocations, activeFilter]);
+
+const filteredOSMPoints = useMemo(() => {
+  if (activeFilter === 'all') {
+    return osmPoints;
+  }
+
+  return osmPoints.filter((point) => {
+    const tags = point.tags ?? {};
+
+    switch (activeFilter) {
+      case 'ramps':
+        return point.type === 'ramp' ||
+          tags.ramp === 'yes' ||
+          tags['ramp:wheelchair'] === 'yes';
+
+      case 'elevators':
+        return point.type === 'elevator';
+
+      case 'entrances':
+        return point.type === 'entrance';
+
+      case 'crossings':
+        return point.type === 'crossing';
+
+      case 'obstacles':
+        return Boolean(tags.barrier) ||
+          tags.obstruction === 'yes';
+
+      case 'tactile_paths':
+        return Boolean(tags.tactile_paving);
+
+      case 'toilets':
+        return tags.amenity === 'toilets' ||
+          Boolean(tags['toilets:wheelchair']);
+
+      case 'parking':
+        return tags.amenity === 'parking' ||
+          Boolean(tags.parking);
+
+      case 'stairs_support':
+        return tags.highway === 'steps' ||
+          Boolean(tags.handrail);
+
+      default:
+        return true;
+    }
+  });
+}, [osmPoints, activeFilter]);
+
+
+  /*
+   * Calculate current position along route.
+   */
   const currentPosition = useMemo(() => {
     if (progress <= 0 || routeCoordinates.length === 0) {
       return null;
@@ -526,6 +980,57 @@ export default function MumbaiMap({
       className={`absolute inset-0 ${dim ? 'brightness-95' : ''}`}
       style={{ zIndex: 0 }}
     >
+      {/* Floating accessibility filter button */}
+<button
+  onClick={() => setShowFilters(!showFilters)}
+  className="absolute bottom-24 left-4 z-[1000] flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg"
+>
+  <span>♿</span>
+  <span>Filters</span>
+  <span>{showFilters ? '✕' : '☰'}</span>
+</button>
+
+{/* Expandable accessibility filter panel */}
+{showFilters && (
+  <div className="absolute bottom-40 left-4 z-[1000] w-52 max-h-64 overflow-y-auto rounded-2xl bg-white p-3 shadow-xl">
+    <p className="mb-3 text-sm font-bold text-slate-800">
+      Filter accessibility features
+    </p>
+
+    {[
+      { label: 'All features', value: 'all' },
+      { label: '↗ Ramps', value: 'ramps' },
+      { label: '🛗 Elevators', value: 'elevators' },
+      { label: '♿ Step-free entrances', value: 'entrances' },
+      { label: '🚦 Clear crossings', value: 'crossings' },
+      { label: '⚠️ Hazards', value: 'obstacles' },
+      { label: '🦯 Tactile paths', value: 'tactile_paths' },
+      { label: '🚻 Accessible toilets', value: 'toilets' },
+      { label: '🅿️ Accessible parking', value: 'parking' },
+      { label: '🚪 Stairs with support', value: 'stairs_support' },
+    ].map((filter) => (
+      <button
+        key={filter.value}
+        onClick={() => {
+          setActiveFilter(
+            filter.value as AccessibilityFilter
+          );
+          setShowFilters(false);
+        }}
+        className={`mb-1 w-full rounded-xl px-3 py-2 text-left text-sm font-medium ${
+          activeFilter === filter.value
+            ? 'bg-indigo-100 text-indigo-700'
+            : 'text-slate-700 hover:bg-slate-100'
+        }`}
+      >
+        {filter.label}
+        {activeFilter === filter.value && ' ✓'}
+      </button>
+    ))}
+  </div>
+)}
+      {/* Accessibility filters */}
+
       <MapContainer
         center={MUMBAI_CENTER}
         zoom={14}
@@ -548,10 +1053,15 @@ export default function MumbaiMap({
           destination={destination}
           highContrast={highContrast}
         />
+        <MapBoundsTracker
+           onBoundsChange={setMapBounds}
+           onZoomChange={setMapZoom}
+         />
 
-        
+
+
 {/* OpenStreetMap accessibility points */}
-{osmPoints.map((point) => {
+{mapZoom >= 14 && filteredOSMPoints.map((point) => {
   const style = getOSMStyle(point.type, mode) ?? {
     radius: 8,
     color: '#2563eb',
@@ -582,36 +1092,22 @@ export default function MumbaiMap({
           }}
         >
           <strong>
-            {point.type === 'ramp'
-              ? '🟢 Ramp'
-              : point.type === 'stairs'
-                ? '🔴 Stairs'
-                : point.type === 'elevator'
-                  ? '🟣 Elevator'
-                  : point.type === 'slope'
-                    ? '🟠 Slope'
-                    : '🔵 Wheelchair accessible'}
-          </strong>
+  {point.type === 'ramp'
+    ? '🟢 Ramp'
+    : point.type === 'stairs'
+      ? '🔴 Stairs'
+      : '🔵 Wheelchair accessible'}
+</strong>
 
           <br />
-
           <strong>{point.name}</strong>
-
           <br />
-
           {point.description}
-
           <br />
 
-          <span
-            style={{
-              color: '#64748b',
-              fontSize: 11,
-            }}
-          >
+          <span style={{ color: '#64748b', fontSize: 11 }}>
             Source: OpenStreetMap
           </span>
-
           <br />
 
           <span style={{ fontSize: 11 }}>
@@ -622,49 +1118,171 @@ export default function MumbaiMap({
     </CircleMarker>
   );
 })}
+{filteredYTALocations.map((location) => (
+  <CircleMarker
+    key={location.id}
+    center={[location.latitude, location.longitude]}
+    radius={mode === 'lowvision' ? 12 : 9}
+    pathOptions={{
+      color:
+        activeFilter === 'ramps' ? '#16a34a'
+        : activeFilter === 'elevators' ? '#2563eb'
+        : activeFilter === 'entrances' ? '#9333ea'
+        : activeFilter === 'tactile_paths' ? '#ea580c'
+        : activeFilter === 'toilets' ? '#0d9488'
+        : activeFilter === 'parking' ? '#ca8a04'
+        : activeFilter === 'stairs_support' ? '#0891b2'
+        : activeFilter === 'crossings' ? '#64748b'
+        : activeFilter === 'obstacles' ? '#dc2626'
+        : '#7c3aed',
+      fillColor:
+        activeFilter === 'ramps' ? '#4ade80'
+        : activeFilter === 'elevators' ? '#60a5fa'
+        : activeFilter === 'entrances' ? '#c4b5fd'
+        : activeFilter === 'tactile_paths' ? '#fb923c'
+        : activeFilter === 'toilets' ? '#5eead4'
+        : activeFilter === 'parking' ? '#fde047'
+        : activeFilter === 'stairs_support' ? '#67e8f9'
+        : activeFilter === 'crossings' ? '#94a3b8'
+        : activeFilter === 'obstacles' ? '#f87171'
+        : '#a78bfa',
+      fillOpacity: 0.9,
+      weight: 3,
+    }}
+  >
+    <Popup>
+  <div
+    style={{
+      minWidth: 140,
+      maxWidth: 190,
+      fontSize: mode === 'lowvision' ? 15 : 13,
+      lineHeight: 1.5,
+    }}
+  >
+    <strong>{location.name}</strong>
+    <br />
 
-        {/* Backend accessibility places */}
-        {visiblePlaces.map((place) => (
-          <CircleMarker
-            key={place.id}
-            center={place.position}
-            radius={mode === 'lowvision' ? 13 : 9}
-            pathOptions={{
-              color: place.obstruction ? '#92400e' : '#1e293b',
-              fillColor: place.obstruction ? '#f59e0b' : '#94a3b8',
-              fillOpacity: 0.9,
-              weight: 3,
-            }}
-          >
-            <Popup>
-              <strong>{place.name}</strong>
-              <br />
-              {place.area}
-              <br />
-              {place.tags.join(', ')}
-              {place.warnings.length > 0 && (
-                <p>{place.warnings.join(', ')}</p>
-              )}
-            </Popup>
-          </CircleMarker>
-        ))}
+    <span style={{ color: '#64748b' }}>
+      {location.city}, {location.state}
+    </span>
+    <br />
+
+    <span>
+      {location.features
+        .filter((feature) =>
+          /detected/i.test(feature.detectionStatus)
+        )
+        .map((feature) => feature.subcategory)
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .slice(0, 3)
+        .join(' · ') || 'Accessibility information available'}
+    </span>
+  </div>
+</Popup>
+  </CircleMarker>
+))}
+
+        {/* -------------------------------------------------
+            Accessibility points
+        ------------------------------------------------- */}
+
+
+{filteredPlaces.map((place) => {
+          const markerType = place.obstruction
+            ? 'warning'
+            : place.ramp
+              ? 'ramp'
+              : place.elevator
+                ? 'elevator'
+                : place.accessibleEntrance
+                  ? 'entrance'
+                  : place.clearCrossing
+                    ? 'crossing'
+                    : 'place';
+
+          const style = getMarkerStyle(markerType, mode);
+
+          return (
+            <CircleMarker
+              key={place.id}
+              center={place.position}
+              radius={style.radius}
+              pathOptions={{
+                color: style.color,
+                fillColor: style.fillColor,
+                fillOpacity: 1,
+                weight: mode === 'lowvision' ? 4 : 3,
+              }}
+            >
+              <Popup>
+                <div
+                  style={{
+                    minWidth: 180,
+                    fontSize: mode === 'lowvision' ? 17 : 14,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <strong>{place.name}</strong>
+                  <br />
+                  <span>{place.area}</span>
+
+                  <hr />
+
+                  {place.ramp && <div>↗️ Ramp available</div>}
+                  {place.elevator && <div>🛗 Elevator available</div>}
+                  {place.accessibleEntrance && (
+                    <div>♿ Step-free entrance</div>
+                  )}
+                  {place.clearCrossing && (
+                    <div>🚦 Clear crossing</div>
+                  )}
+                  {place.wheelchair && (
+                    <div>♿ Wheelchair accessibility</div>
+                  )}
+                  {place.obstruction && (
+                    <div>⚠️ Potential obstruction</div>
+                  )}
+
+                  {place.warnings.length > 0 && (
+                    <div>
+                      <strong>Warnings:</strong>
+                      {place.warnings.map((warning, index) => (
+                        <div key={index}>{warning}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Popup>
+            </CircleMarker>
+          );
+        })}
+
+
+
+        {/* -------------------------------------------------
+    Community-reported issues
+------------------------------------------------- */}
+
+
 
         {/* Community reports — placed above the destination marker layer */}
         <Pane
           name="communityReportsPane"
           style={{ zIndex: 650, pointerEvents: 'auto' }}
         >
-          {communityReports.map((report) => (
+          {(Array.isArray(communityReports) ? communityReports : []).map((report) => (
             <CircleMarker
               key={`report-${report.id}`}
+              eventHandlers={{
+                click: (event) => {
+                  console.log('RED REPORT CLICKED:', report);
+                  event.target.openPopup();
+                },
+              }}
               pane="communityReportsPane"
               center={[report.latitude, report.longitude]}
               radius={mode === 'lowvision' ? 17 : 12}
-              eventHandlers={{
-                click: () => {
-                  console.log('Community marker clicked:', report.id);
-                },
-              }}
+              
               pathOptions={{
                 color: '#991b1b',
                 fillColor: '#ef4444',
@@ -690,6 +1308,8 @@ export default function MumbaiMap({
                   <div>
                     {report.description || 'No description provided.'}
                   </div>
+
+
                   <div
                     style={{
                       marginTop: 8,
@@ -737,7 +1357,11 @@ export default function MumbaiMap({
 
         {/* Destination */}
         {destination && (
-          <Marker position={destination} icon={destinationIcon}>
+          <Marker
+          position={destination}
+          icon={destinationIcon}
+          zIndexOffset={-1000}
+        >
             <Popup>
               <div
                 style={{

@@ -1,4 +1,5 @@
 import os
+import json
 import uuid
 import math
 import requests
@@ -19,7 +20,7 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 
 from data import NAV_STATES, REPORT_OPTIONS, ROUTES
-from osm_accessibility import get_osm_accessibility_points
+from yta_data import get_yta_locations
 from database import (
     places_collection,
     saved_collection,
@@ -122,35 +123,29 @@ class SOSAlertRequest(BaseModel):
 # ACCESSIBILITY MODELS
 # ============================================================
 
-
 class AccessibilityRequest(BaseModel):
+    """
+    Accessibility preferences sent by the frontend.
+
+    wheelchair:
+        Used for wheelchair-friendly routing.
+
+    lowvision:
+        Used for low-vision-friendly routing.
+
+    preferences:
+        Optional list of preferences from the setup/profile screen.
+    """
+
     mode: str = Field(
         default="wheelchair",
-        description="wheelchair or lowvision"
+        description="wheelchair or lowvision",
     )
 
     preferences: List[str] = Field(
         default_factory=list,
-        description="Accessibility preferences"
+        description="Accessibility preferences",
     )
-
-    routeCoordinates: List[List[float]] = Field(
-        default_factory=list,
-        description="OSRM route coordinates in longitude, latitude format"
-    )
-
-    latitude: Optional[float] = Field(
-        default=None,
-        ge=-90,
-        le=90
-    )
-
-    longitude: Optional[float] = Field(
-        default=None,
-        ge=-180,
-        le=180
-    )
-
 
 
 class AccessibilityPoint(BaseModel):
@@ -319,10 +314,10 @@ def add_emergency_contact(
     return {
         "message": "Emergency contact added successfully",
         "contact": {
-            key: value
-            for key, value in new_contact.items()
-            if key not in ("user_id", "_id")
-        },
+    key: value
+    for key, value in new_contact.items()
+    if key not in ("user_id", "_id")
+},
     }
 
 
@@ -422,6 +417,8 @@ def register(user: RegisterRequest):
             detail="Email already registered",
         )
 
+    import uuid
+
     user_id = str(uuid.uuid4())
 
     hashed_password = hash_password(
@@ -514,6 +511,184 @@ def get_places():
 
     return places
 
+# ============================================================
+# OPENSTREETMAP ACCESSIBILITY PLACES
+# ============================================================
+
+
+@app.get("/api/places/openstreetmap")
+def get_openstreetmap_places(
+    south: float = Query(..., ge=-90, le=90),
+    west: float = Query(..., ge=-180, le=180),
+    north: float = Query(..., ge=-90, le=90),
+    east: float = Query(..., ge=-180, le=180),
+):
+    if south >= north or west >= east:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid map boundaries",
+        )
+
+    dataset_path = os.path.join(
+        os.path.dirname(__file__),
+        "datasets",
+        "maharashtra_osm.geojson",
+    )
+
+    try:
+        with open(dataset_path, "r", encoding="utf-8") as file:
+            osm_data = json.load(file)
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="Maharashtra OSM dataset was not found",
+        )
+
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=500,
+            detail="Maharashtra OSM dataset contains invalid JSON",
+        )
+
+    accessibility_places = []
+
+    for feature in osm_data.get("features", []):
+        geometry = feature.get("geometry") or {}
+
+        if geometry.get("type") != "Point":
+            continue
+
+        coordinates = geometry.get("coordinates", [])
+
+        if len(coordinates) < 2:
+            continue
+
+        longitude, latitude = coordinates[:2]
+
+        if not (south <= latitude <= north):
+            continue
+
+        if not (west <= longitude <= east):
+            continue
+
+        tags = feature.get("properties") or {}
+
+        wheelchair_value = tags.get("wheelchair", "unknown")
+
+        ramp = (
+            tags.get("ramp") in ["yes", "true", "designated"]
+            or tags.get("ramp:wheelchair") == "yes"
+        )
+
+        elevator = tags.get("highway") == "elevator"
+
+        accessible_entrance = (
+            "entrance" in tags
+            and wheelchair_value in ["yes", "limited", "designated"]
+        )
+
+        clear_crossing = tags.get("highway") == "crossing"
+
+        warnings = []
+
+        if wheelchair_value == "no":
+            warnings.append("Marked as not wheelchair accessible")
+        elif wheelchair_value == "limited":
+            warnings.append("Wheelchair access may be limited")
+        elif wheelchair_value == "unknown":
+            warnings.append("Wheelchair accessibility is not recorded")
+
+        if tags.get("tactile_paving") == "no":
+            warnings.append("No tactile paving recorded")
+
+        feature_tags = [
+            f"{key}={value}"
+            for key, value in tags.items()
+            if not key.startswith("@")
+        ]
+
+        accessibility_places.append({
+            "id": feature.get("id", "osm-unknown"),
+            "name": tags.get("name", "Unnamed accessibility feature"),
+            "area": tags.get(
+                "addr:suburb",
+                tags.get("addr:city", "Maharashtra")
+            ),
+            "position": [latitude, longitude],
+            "tags": feature_tags,
+            "warnings": warnings,
+            "wheelchair": wheelchair_value in [
+                "yes", "limited", "designated"
+            ],
+            "wheelchairStatus": wheelchair_value,
+            "ramp": ramp,
+            "elevator": elevator,
+            "accessibleEntrance": accessible_entrance,
+            "clearCrossing": clear_crossing,
+            "tactilePaving": tags.get("tactile_paving", "unknown"),
+            "handrail": tags.get("handrail", "unknown"),
+            "toiletsWheelchair": tags.get(
+                "toilets:wheelchair", "unknown"
+            ),
+            "obstruction": False,
+            "source": "OpenStreetMap",
+        })
+
+    return accessibility_places
+
+
+# ============================================================
+# YES TO ACCESS - ACCESSIBILITY LOCATIONS
+# ============================================================
+
+@app.get("/api/places/yes-to-access")
+def get_yes_to_access_locations(
+    south: float = Query(..., ge=-90, le=90),
+    west: float = Query(..., ge=-180, le=180),
+    north: float = Query(..., ge=-90, le=90),
+    east: float = Query(..., ge=-180, le=180),
+):
+    if south >= north or west >= east:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid map boundaries",
+        )
+
+    if north - south > 5 or east - west > 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Please zoom in to load accessibility locations",
+        )
+
+    try:
+        locations = get_yta_locations(
+            south=south,
+            west=west,
+            north=north,
+            east=east,
+        )
+
+        return {
+            "success": True,
+            "source": "Yes to Access",
+            "count": len(locations),
+            "locations": locations,
+        }
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="Yes to Access CSV file was not found",
+        )
+
+    except Exception as error:
+        print("YES TO ACCESS ERROR:", repr(error))
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load accessibility locations",
+        )
+
 
 @app.get("/api/places/{place_id}")
 def get_place(place_id: str):
@@ -536,45 +711,91 @@ def get_place(place_id: str):
     return place
 
 
+
+
 # ============================================================
 # PLACE ACCESSIBILITY INFORMATION
 # ============================================================
 
 @app.get("/api/places/{place_id}/accessibility")
 def get_place_accessibility(place_id: str):
-    place = places_collection.find_one({"id": place_id}, {"_id": 0})
+
+    place = places_collection.find_one(
+        {
+            "id": place_id
+        },
+        {
+            "_id": 0,
+        },
+    )
 
     if not place:
-        raise HTTPException(status_code=404, detail="Place not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Place not found",
+        )
 
-    tags = [str(tag) for tag in (place.get("tags") or [])]
-    warnings = [str(item) for item in (place.get("warnings") or [])]
+    tags = place.get("tags", [])
+    warnings = place.get("warnings", [])
 
-    wheelchair_keywords = (
-        "ramp", "elevator", "step-free", "wheelchair",
-        "accessible shuttle", "smooth sidewalk", "accessible restroom",
-        "accessible entrance",
-    )
-    lowvision_keywords = (
-        "smooth sidewalk", "clear crossing", "better visibility",
-        "tactile paving", "audio signal", "audible signal",
-    )
+    wheelchair_features = []
 
-    wheelchair_features = [
-        tag for tag in tags
-        if any(word in tag.lower() for word in wheelchair_keywords)
+    lowvision_features = []
+
+    # --------------------------------------------------------
+    # Wheelchair features
+    # --------------------------------------------------------
+
+    wheelchair_keywords = [
+        "Step-free entrance",
+        "Ramps available",
+        "Ramps",
+        "Elevators available",
+        "Elevator available",
+        "Accessible shuttle",
+        "Smooth sidewalks",
+        "Smooth sidewalk",
+        "Accessible restrooms",
     ]
-    lowvision_features = [
-        tag for tag in tags
-        if any(word in tag.lower() for word in lowvision_keywords)
-    ]
-    accessibility_warnings = [
-        {"text": warning, "severity": "warning"}
-        for warning in warnings
+
+    for tag in tags:
+        if tag in wheelchair_keywords:
+            wheelchair_features.append(tag)
+
+    # --------------------------------------------------------
+    # Low vision features
+    # --------------------------------------------------------
+
+    lowvision_keywords = [
+        "Smooth sidewalks",
+        "Smooth sidewalk",
+        "Clear crossings",
+        "Better visibility",
     ]
 
-    has_data = bool(wheelchair_features or lowvision_features or warnings)
-    score = place.get("score") if has_data else None
+    for tag in tags:
+        if tag in lowvision_keywords:
+            lowvision_features.append(tag)
+
+    # --------------------------------------------------------
+    # Warning classification
+    # --------------------------------------------------------
+
+    accessibility_warnings = []
+
+    for warning in warnings:
+        accessibility_warnings.append(
+            {
+                "text": warning,
+                "severity": "warning",
+            }
+        )
+
+    # --------------------------------------------------------
+    # Score
+    # --------------------------------------------------------
+
+    score = place.get("score", 0)
 
     return {
         "placeId": place_id,
@@ -591,7 +812,134 @@ def get_place_accessibility(place_id: str):
                 "warnings": accessibility_warnings,
             },
         },
+        "tags": tags,
+        "warnings": warnings,
     }
+
+
+# ============================================================
+# ACCESSIBILITY ROUTE ANALYSIS
+# ============================================================
+
+def normalize_mode(mode: str) -> str:
+    mode = mode.lower().strip()
+
+    if mode not in ["wheelchair", "lowvision"]:
+        raise HTTPException(
+            status_code=400,
+            detail="mode must be either 'wheelchair' or 'lowvision'",
+        )
+
+    return mode
+
+
+# ============================================================
+# NEW HELPER: BUILD ROUTES FOR ANY SEARCHED PLACE
+# ============================================================
+
+def build_accessibility_routes_for_place(
+    place: Dict[str, Any],
+    mode: str,
+    preferences: List[str],
+):
+    """
+    Build accessibility route choices for any place.
+
+    For places that already have predefined ROUTES, those routes
+    can still be used.
+
+    For newly searched places that are not in ROUTES, create
+    generic route choices from the place's accessibility metadata.
+    """
+
+    place_id = place.get("id")
+
+    # Keep the existing predefined routes when available.
+    existing_routes = ROUTES.get(place_id, [])
+
+    if existing_routes:
+        return [
+            {
+                **route,
+                "accessibility": analyze_route_for_accessibility(
+                    route=route,
+                    place=place,
+                    mode=mode,
+                    preferences=preferences,
+                ),
+            }
+            for route in existing_routes
+        ]
+
+    # --------------------------------------------------------
+    # No predefined routes.
+    # Build routes dynamically from the place metadata.
+    # --------------------------------------------------------
+
+    tags = place.get("tags", [])
+    warnings = place.get("warnings", [])
+
+    features = []
+
+    for tag in tags:
+        features.append({
+            "text": tag,
+            "ok": True,
+        })
+
+    for warning in warnings:
+        features.append({
+            "text": warning,
+            "ok": False,
+        })
+
+    # Generic accessible route
+    accessible_route = {
+        "id": "accessible",
+        "title": "Most Accessible",
+        "emoji": "⭐",
+        "color": "accessible",
+        "time": None,
+        "dist": None,
+        "tag": "Based on available accessibility information",
+        "badge": "Accessibility information available",
+        "features": features,
+    }
+
+    # Generic clear route
+    clear_route = {
+        "id": "clear",
+        "title": "Clear Route",
+        "emoji": "👁",
+        "color": "warning",
+        "time": None,
+        "dist": None,
+        "tag": "Based on available accessibility information",
+        "features": features,
+    }
+
+    routes = [
+        accessible_route,
+        clear_route,
+    ]
+
+    return [
+        {
+            **route,
+            "accessibility": analyze_route_for_accessibility(
+                route=route,
+                place=place,
+                mode=mode,
+                preferences=preferences,
+            ),
+        }
+        for route in routes
+    ]
+
+
+# ============================================================
+# EXISTING ROUTE ANALYSIS
+# ============================================================
 
 def analyze_route_for_accessibility(
     route: Dict[str, Any],
@@ -600,194 +948,241 @@ def analyze_route_for_accessibility(
     preferences: List[str],
 ):
     """
-    Report only explicitly recorded accessibility features
-    and obstacles. Absence of information is not proof of access.
+    Analyze the application's route metadata.
+
+    This does NOT claim that OSRM itself is accessibility-aware.
+
+    Instead, this endpoint combines:
+        1. Route metadata
+        2. MongoDB accessibility information
+        3. User accessibility preferences
+
+    Later, this can be replaced/extended with a true
+    accessibility-aware pedestrian routing engine.
     """
 
     mode = normalize_mode(mode)
 
-    route_features = route.get("features") or []
+    features = route.get("features", [])
 
     positive_features = []
     negative_features = []
 
-    for feature in route_features:
-        if not isinstance(feature, dict):
-            continue
+    for feature in features:
+        text = feature.get("text", "")
+        ok = feature.get("ok", False)
 
-        text = str(feature.get("text", "")).strip()
-
-        if not text:
-            continue
-
-        if feature.get("ok") is True:
+        if ok:
             positive_features.append(text)
-        elif feature.get("ok") is False:
+        else:
             negative_features.append(text)
 
-    place_tags = place.get("tags") or [] if place else []
-    place_warnings = place.get("warnings") or [] if place else []
+    place_tags = []
+    place_warnings = []
+
+    if place:
+        place_tags = place.get("tags", [])
+        place_warnings = place.get("warnings", [])
+
+    # --------------------------------------------------------
+    # Wheelchair analysis
+    # --------------------------------------------------------
+
+    wheelchair_positive = [
+        "No stairs",
+        "Ramp available",
+        "Ramps",
+        "Ramps available",
+        "Elevator available",
+        "Elevators available",
+        "Step-free",
+        "Step-free entrance",
+        "Smooth sidewalk",
+        "Smooth sidewalks",
+        "Accessible shuttle",
+        "Accessible restrooms",
+    ]
+
+    wheelchair_negative = [
+        "Stairs",
+        "Uneven sidewalk",
+        "Uneven sidewalks",
+        "Broken ramp",
+        "Steep slope",
+    ]
+
+    # --------------------------------------------------------
+    # Low vision analysis
+    # --------------------------------------------------------
+
+    lowvision_positive = [
+        "Fewer obstacles",
+        "Clear crossings",
+        "Better visibility",
+        "Smooth sidewalk",
+        "Smooth sidewalks",
+    ]
+
+    lowvision_negative = [
+        "Busy crossing",
+        "Busy road",
+        "Crowded crossing",
+        "Long crossing",
+        "Complicated intersection",
+        "Obstacles",
+    ]
 
     if mode == "wheelchair":
-        positive_keywords = (
-            "ramp", "elevator", "step-free", "wheelchair",
-            "smooth sidewalk", "accessible restroom",
-            "accessible entrance", "accessible shuttle",
+
+        positive_count = 0
+        negative_count = 0
+
+        for feature in positive_features:
+            if feature in wheelchair_positive:
+                positive_count += 1
+
+        for feature in negative_features:
+            if feature in wheelchair_negative:
+                negative_count += 1
+
+        for tag in place_tags:
+            if tag in wheelchair_positive:
+                positive_count += 1
+
+        accessibility_score = max(
+            0,
+            min(
+                100,
+                70
+                + (positive_count * 10)
+                - (negative_count * 20),
+            ),
         )
-        negative_keywords = (
-            "stairs", "uneven sidewalk", "broken ramp",
-            "steep slope", "inaccessible",
+
+        summary = (
+            "Wheelchair-friendly features detected."
+            if positive_count > 0 and negative_count == 0
+            else "Potential wheelchair accessibility obstacles detected."
+            if negative_count > 0
+            else "Accessibility information is limited."
         )
+
     else:
-        positive_keywords = (
-            "clear crossing", "better visibility",
-            "smooth sidewalk", "tactile paving",
-            "audio signal", "audible signal",
+
+        positive_count = 0
+        negative_count = 0
+
+        for feature in positive_features:
+            if feature in lowvision_positive:
+                positive_count += 1
+
+        for feature in negative_features:
+            if feature in lowvision_negative:
+                negative_count += 1
+
+        for tag in place_tags:
+            if tag in lowvision_positive:
+                positive_count += 1
+
+        accessibility_score = max(
+            0,
+            min(
+                100,
+                70
+                + (positive_count * 10)
+                - (negative_count * 15),
+            ),
         )
-        negative_keywords = (
-            "busy crossing", "busy road", "crowded crossing",
-            "long crossing", "complicated intersection",
-            "obstacles", "poor visibility",
+
+        summary = (
+            "Clear-route features detected."
+            if positive_count > 0 and negative_count == 0
+            else "Potential visibility or crossing obstacles detected."
+            if negative_count > 0
+            else "Accessibility information is limited."
         )
 
-    # Add only place tags relevant to the selected mode.
-    for tag in place_tags:
-        text = str(tag).strip()
-        lowered = text.lower()
+    # --------------------------------------------------------
+    # Preferences
+    # --------------------------------------------------------
 
-        if any(word in lowered for word in positive_keywords):
-            if text not in positive_features:
-                positive_features.append(text)
-
-        elif any(word in lowered for word in negative_keywords):
-            if text not in negative_features:
-                negative_features.append(text)
-
-    # Add only relevant recorded warnings.
-    relevant_warnings = []
-
-    for warning in place_warnings:
-        text = str(warning).strip()
-        lowered = text.lower()
-
-        if any(word in lowered for word in negative_keywords):
-            if text not in negative_features:
-                negative_features.append(text)
-
-            relevant_warnings.append(text)
-
-    # Preferences are included only when matching evidence exists.
     preference_matches = []
 
-    combined_positive = " ".join(positive_features).lower()
-    combined_negative = " ".join(negative_features).lower()
-
     for preference in preferences:
-        normalized = preference.lower().strip()
-        status = None
 
-        if "ramp" in normalized and "ramp" in combined_positive:
-            status = "supported"
+        preference_lower = preference.lower()
 
-        elif "elevator" in normalized and "elevator" in combined_positive:
-            status = "supported"
+        combined_text = " ".join(
+            positive_features
+            + negative_features
+            + place_tags
+            + place_warnings
+        ).lower()
 
-        elif "stair" in normalized and "stair" in combined_negative:
-            status = "warning"
+        if (
+            "stair" in preference_lower
+            and "stair" not in combined_text
+        ):
+            preference_matches.append(
+                {
+                    "preference": preference,
+                    "status": "supported",
+                }
+            )
 
         elif (
-            ("crossing" in normalized or "visibility" in normalized)
-            and any(
-                word in combined_positive
-                for word in ("crossing", "visibility")
-            )
+            "ramp" in preference_lower
+            and "ramp" in combined_text
         ):
-            status = "supported"
+            preference_matches.append(
+                {
+                    "preference": preference,
+                    "status": "supported",
+                }
+            )
 
         elif (
-            ("crossing" in normalized or "visibility" in normalized)
-            and any(
-                word in combined_negative
-                for word in ("crossing", "visibility")
+            "elevator" in preference_lower
+            and "elevator" in combined_text
+        ):
+            preference_matches.append(
+                {
+                    "preference": preference,
+                    "status": "supported",
+                }
+            )
+
+        elif (
+            "crossing" in preference_lower
+            and (
+                "crossing" in combined_text
+                or "visibility" in combined_text
             )
         ):
-            status = "warning"
+            preference_matches.append(
+                {
+                    "preference": preference,
+                    "status": "supported",
+                }
+            )
 
-        # Do not append unknown or unsupported guesses.
-        if status:
-            preference_matches.append({
-                "preference": preference,
-                "status": status,
-            })
-
-    has_positive = bool(positive_features)
-    has_negative = bool(negative_features)
-
-    if has_positive and has_negative:
-        summary = "Recorded accessibility features and potential obstacles were found."
-    elif has_positive:
-        summary = "Recorded accessibility features were found."
-    elif has_negative:
-        summary = "Recorded potential accessibility obstacles were found."
-    else:
-        summary = ""
+        else:
+            preference_matches.append(
+                {
+                    "preference": preference,
+                    "status": "unknown",
+                }
+            )
 
     return {
-        "score": None,
+        "score": accessibility_score,
         "summary": summary,
         "positiveFeatures": positive_features,
         "negativeFeatures": negative_features,
-        "placeFeatures": [
-            tag for tag in place_tags
-            if any(
-                word in str(tag).lower()
-                for word in positive_keywords
-            )
-        ],
-        "warnings": relevant_warnings,
+        "placeFeatures": place_tags,
+        "warnings": place_warnings,
         "preferences": preference_matches,
     }
-
-
-def build_accessibility_routes_for_place(
-    place: Dict[str, Any],
-    mode: str,
-    preferences: Optional[List[str]] = None,
-):
-    """Return predefined routes, or one route from recorded place evidence."""
-    mode = normalize_mode(mode)
-    preferences = preferences or []
-    place_id = str(place.get("id", ""))
-    predefined_routes = ROUTES.get(place_id, []) or []
-    candidate_routes = list(predefined_routes)
-
-    if not candidate_routes:
-        tags = place.get("tags") or []
-        warnings = place.get("warnings") or []
-        if not tags and not warnings:
-            return []
-
-        candidate_routes = [{
-            "id": "stored-accessibility",
-            "title": "Accessibility information",
-            "features": (
-                [{"text": str(tag), "ok": True} for tag in tags]
-                + [{"text": str(warning), "ok": False} for warning in warnings]
-            ),
-        }]
-
-    results = []
-    for route in candidate_routes:
-        analysis = analyze_route_for_accessibility(
-            route=route,
-            place=place,
-            mode=mode,
-            preferences=preferences,
-        )
-        if analysis["positiveFeatures"] or analysis["negativeFeatures"]:
-            results.append({**route, "accessibility": analysis})
-
-    return results
 
 
 # ============================================================
@@ -859,403 +1254,62 @@ def get_accessibility_routes(
 # ACCESSIBILITY ROUTE ANALYSIS WITH USER PREFERENCES
 # ============================================================
 
-
 @app.post("/api/accessibility/analyze/{place_id}")
 def analyze_accessibility_route(
     place_id: str,
     request: AccessibilityRequest,
 ):
-    """Analyze predefined place routes and nearby OSM accessibility features."""
+    """
+    Analyze all available route choices for a destination
+    using the user's accessibility mode and preferences.
+    """
+
     mode = normalize_mode(request.mode)
-    place = places_collection.find_one({"id": place_id}, {"_id":  0})
 
-    if not place:
-        raise HTTPException(status_code=404, detail="Place not found")
-
-    coordinates = request.routeCoordinates or []
-    if len(coordinates) > 10000:
-        raise HTTPException(status_code=400, detail="Too many route coordinates")
-
-    for coordinate in coordinates:
-        if not isinstance(coordinate, list) or len(coordinate) != 2:
-            raise HTTPException(status_code=400, detail="Invalid route coordinate format")
-        longitude, latitude = coordinate
-        if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
-            raise HTTPException(status_code=400, detail="Invalid latitude or longitude")
-
-    nearby_ramps, nearby_stairs, nearby_elevators = [], [], []
-    osm_available = False
-
-    if len(coordinates) >= 2:
-        try:
-            center_lon = sum(point[0] for point in coordinates) / len(coordinates)
-            center_lat = sum(point[1] for point in coordinates) / len(coordinates)
-            osm_points = get_osm_accessibility_points(
-                latitude=center_lat,
-                longitude=center_lon,
-                radius=5000,
-            )
-            osm_available = True
-
-            # Approximate distance from each OSM point to the nearest sampled route segment.
-            cos_lat = math.cos(math.radians(center_lat))
-            step = max(1, len(coordinates) // 400)
-            sampled = coordinates[::step]
-            if sampled[-1] != coordinates[-1]:
-                sampled.append(coordinates[-1])
-
-            for point in osm_points:
-                point_lat = point.get("latitude")
-                point_lon = point.get("longitude")
-                if point_lat is None or point_lon is None:
-                    continue
-                point_lat, point_lon = float(point_lat), float(point_lon)
-                min_distance = float("inf")
-
-                for index in range(len(sampled) - 1):
-                    lon1, lat1 = sampled[index]
-                    lon2, lat2 = sampled[index + 1]
-                    x1 = math.radians(lon1 - point_lon) * 6371000 * cos_lat
-                    y1 = math.radians(lat1 - point_lat) * 6371000
-                    x2 = math.radians(lon2 - point_lon) * 6371000 * cos_lat
-                    y2 = math.radians(lat2 - point_lat) * 6371000
-                    dx, dy = x2 - x1, y2 - y1
-                    denominator = dx * dx + dy * dy
-                    t = 0 if denominator == 0 else max(0, min(1, -(x1 * dx + y1 * dy) / denominator))
-                    distance = math.sqrt((x1 + t * dx) ** 2 + (y1 + t * dy) ** 2)
-                    min_distance = min(min_distance, distance)
-
-                if min_distance > 30:
-                    continue
-                point_type = str(point.get("type", "")).lower().strip()
-                if point_type == "ramp":
-                    nearby_ramps.append(point)
-                elif point_type == "stairs":
-                    nearby_stairs.append(point)
-                elif point_type == "elevator":
-                    nearby_elevators.append(point)
-        except Exception as error:
-            print("OSM route analysis unavailable:", str(error))
-            osm_available = False
-
-    routes = build_accessibility_routes_for_place(
-        place=place,
-        mode=mode,
-        preferences=request.preferences,
+    place = places_collection.find_one(
+        {
+            "id": place_id
+        },
+        {
+            "_id": 0,
+        },
     )
 
-    for route in routes:
-        analysis = route.get("accessibility", {})
-        positive = list(analysis.get("positiveFeatures", []))
-        negative = list(analysis.get("negativeFeatures", []))
-        warnings = list(analysis.get("warnings", []))
+    if not place:
+        raise HTTPException(
+            status_code=404,
+            detail="Place not found",
+        )
 
-        if osm_available and mode == "wheelchair":
-            if nearby_ramps:
-                positive.append(f"{len(nearby_ramps)} mapped ramp(s) found near this route")
-            if nearby_elevators:
-                positive.append(f"{len(nearby_elevators)} mapped elevator(s) found near this route")
-            if nearby_stairs:
-                message = f"{len(nearby_stairs)} mapped stair location(s) found near this route"
-                negative.append(message)
-                warnings.append(message)
+    place_routes = ROUTES.get(
+        place_id,
+        [],
+    )
 
-        preference_results = list(analysis.get("preferences", []))
-        for preference in request.preferences:
-            normalized = preference.lower().strip()
-            status = None
-            if "ramp" in normalized and nearby_ramps:
-                status = "supported"
-            elif "elevator" in normalized and nearby_elevators:
-                status = "supported"
-            elif "stair" in normalized and nearby_stairs:
-                status = "warning"
-            if status and not any(item.get("preference") == preference for item in preference_results):
-                preference_results.append({"preference": preference, "status": status})
+    analyzed_routes = []
 
-        analysis["positiveFeatures"] = positive
-        analysis["negativeFeatures"] = negative
-        analysis["warnings"] = warnings
-        analysis["preferences"] = preference_results
-        analysis["osmEvidence"] = {
-            "available": osm_available,
-            "nearbyRamps": len(nearby_ramps),
-            "nearbyStairs": len(nearby_stairs),
-            "nearbyElevators": len(nearby_elevators),
-        }
+    for route in place_routes:
+
+        analysis = analyze_route_for_accessibility(
+            route=route,
+            place=place,
+            mode=mode,
+            preferences=request.preferences,
+        )
+
+        analyzed_routes.append(
+            {
+                **route,
+                "accessibility": analysis,
+            }
+        )
 
     return {
         "placeId": place_id,
         "mode": mode,
-        "routes": routes,
-        "osmEvidence": {
-            "available": osm_available,
-            "nearbyRamps": len(nearby_ramps),
-            "nearbyStairs": len(nearby_stairs),
-            "nearbyElevators": len(nearby_elevators),
-        },
+        "preferences": request.preferences,
+        "routes": analyzed_routes,
     }
-
-def normalize_mode(mode: str) -> str:
-    value = (mode or "").strip().lower()
-
-    if value in ["wheelchair", "wheel chair"]:
-        return "wheelchair"
-
-    if value in ["lowvision", "low vision", "low_vision"]:
-        return "lowvision"
-
-    return "wheelchair"
-
-@app.post("/api/accessibility/analyze-location")
-def analyze_accessibility_by_location(
-    request: AccessibilityRequest,
-):
-    mode = normalize_mode(request.mode)
-    coordinates = request.routeCoordinates or []
-
-    if len(coordinates) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="At least two route coordinates are required",
-        )
-
-    if len(coordinates) > 10000:
-        raise HTTPException(
-            status_code=400,
-            detail="Too many route coordinates",
-        )
-
-    for coordinate in coordinates:
-        if not isinstance(coordinate, list) or len(coordinate) != 2:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid route coordinate format",
-            )
-
-        longitude, latitude = coordinate
-
-        if not (
-            -180 <= longitude <= 180
-            and -90 <= latitude <= 90
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid latitude or longitude",
-            )
-
-    def point_to_route_distance(point_lat, point_lon):
-        cos_lat = math.cos(math.radians(point_lat))
-        min_distance = float("inf")
-
-        step = max(1, len(coordinates) // 400)
-        sampled = coordinates[::step]
-
-        if sampled[-1] != coordinates[-1]:
-            sampled.append(coordinates[-1])
-
-        for i in range(len(sampled) - 1):
-            lon1, lat1 = sampled[i]
-            lon2, lat2 = sampled[i + 1]
-
-            x1 = math.radians(lon1 - point_lon) * 6371000 * cos_lat
-            y1 = math.radians(lat1 - point_lat) * 6371000
-
-            x2 = math.radians(lon2 - point_lon) * 6371000 * cos_lat
-            y2 = math.radians(lat2 - point_lat) * 6371000
-
-            dx = x2 - x1
-            dy = y2 - y1
-            denominator = dx * dx + dy * dy
-
-            if denominator == 0:
-                t = 0
-            else:
-                t = max(
-                    0,
-                    min(1, -(x1 * dx + y1 * dy) / denominator),
-                )
-
-            closest_x = x1 + t * dx
-            closest_y = y1 + t * dy
-
-            distance = math.sqrt(closest_x ** 2 + closest_y ** 2)
-            min_distance = min(min_distance, distance)
-
-        return min_distance
-
-    nearby_ramps = []
-    nearby_stairs = []
-    nearby_elevators = []
-    nearby_slopes = []
-    nearby_accessible_locations = []
-
-    try:
-        center_lon = sum(point[0] for point in coordinates) / len(coordinates)
-        center_lat = sum(point[1] for point in coordinates) / len(coordinates)
-
-        osm_points = get_osm_accessibility_points(
-            latitude=center_lat,
-            longitude=center_lon,
-            radius=5000,
-        )
-
-        for point in osm_points:
-            point_lat = point.get("latitude")
-            point_lon = point.get("longitude")
-
-            if point_lat is None or point_lon is None:
-                continue
-
-            distance = point_to_route_distance(
-                float(point_lat),
-                float(point_lon),
-            )
-
-            if distance > 30:
-                continue
-
-            point_type = str(point.get("type", "")).lower().strip()
-
-            if point_type == "ramp":
-                nearby_ramps.append(point)
-            elif point_type == "stairs":
-                nearby_stairs.append(point)
-            elif point_type == "elevator":
-                nearby_elevators.append(point)
-            elif point_type in ("slope", "incline"):
-                nearby_slopes.append(point)
-            elif point_type == "wheelchair_accessible":
-                nearby_accessible_locations.append(point)
-
-    except Exception as error:
-        print("OSM location analysis unavailable:", str(error))
-
-    positive_features = []
-    negative_features = []
-    warnings = []
-
-    if nearby_ramps:
-        positive_features.append(
-            f"{len(nearby_ramps)} mapped ramp(s) found near this route"
-        )
-
-    if nearby_elevators:
-        positive_features.append(
-            f"{len(nearby_elevators)} mapped elevator(s) found near this route"
-        )
-
-    if nearby_accessible_locations:
-        positive_features.append(
-            f"{len(nearby_accessible_locations)} wheelchair-accessible location(s) mapped near this route"
-        )
-
-    if nearby_stairs:
-        message = (
-            f"{len(nearby_stairs)} mapped stair location(s) found near this route"
-        )
-        negative_features.append(message)
-        warnings.append(message)
-
-    if nearby_slopes:
-        message = (
-            f"{len(nearby_slopes)} mapped incline(s) found near this route. "
-            "Their steepness has not been verified."
-        )
-        negative_features.append(message)
-        warnings.append(message)
-
-    # Only report preferences for which actual matching evidence exists.
-    preference_results = []
-
-    for preference in request.preferences:
-        normalized = preference.lower().strip()
-        status = None
-
-        if "elevator" in normalized and nearby_elevators:
-            status = "supported"
-        elif "ramp" in normalized and nearby_ramps:
-            status = "supported"
-        elif "stair" in normalized and nearby_stairs:
-            status = "warning"
-        elif (
-            ("slope" in normalized or "incline" in normalized)
-            and nearby_slopes
-        ):
-            status = "warning"
-
-        if status:
-            preference_results.append({
-                "preference": preference,
-                "status": status,
-            })
-
-    # No evidence means no accessibility result.
-    has_evidence = bool(
-        positive_features
-        or negative_features
-        or preference_results
-    )
-
-    if not has_evidence:
-        return {
-            "mode": mode,
-            "preferences": [],
-            "routes": [],
-            "osmEvidence": {
-                "available": False,
-                "nearbyRamps": 0,
-                "nearbyStairs": 0,
-                "nearbyElevators": 0,
-                "nearbySlopes": 0,
-                "nearbyWheelchairAccessibleLocations": 0,
-            },
-        }
-
-    if positive_features and negative_features:
-        summary = (
-            "Recorded accessibility features and potential obstacles "
-            "were found near this route."
-        )
-    elif positive_features:
-        summary = "Recorded accessibility features were found near this route."
-    else:
-        summary = "Potential accessibility obstacles were found near this route."
-
-    osm_evidence = {
-        "available": True,
-        "nearbyRamps": len(nearby_ramps),
-        "nearbyStairs": len(nearby_stairs),
-        "nearbyElevators": len(nearby_elevators),
-        "nearbySlopes": len(nearby_slopes),
-        "nearbyWheelchairAccessibleLocations": len(nearby_accessible_locations),
-        "searchRadiusMetres": 5000,
-        "routeProximityMetres": 30,
-    }
-
-    return {
-        "mode": mode,
-        "preferences": [item["preference"] for item in preference_results],
-        "routes": [
-            {
-                "id": "location-route",
-                "title": "Selected Route",
-                "accessibility": {
-                    "score": None,
-                    "summary": summary,
-                    "positiveFeatures": positive_features,
-                    "negativeFeatures": negative_features,
-                    "placeFeatures": [],
-                    "warnings": warnings,
-                    "preferences": preference_results,
-                    "osmEvidence": osm_evidence,
-                },
-            }
-        ],
-        "osmEvidence": osm_evidence,
-    }
-
-
 
 
 # ============================================================
@@ -1329,7 +1383,7 @@ def get_accessibility_points(
                 "longitude": place_lng,
                 "tags": place.get("tags", []),
                 "warnings": place.get("warnings", []),
-                "score": place.get("score") if (place.get("tags") or place.get("warnings")) else None,
+                "score": place.get("score", 0),
                 "distanceKm": round(distance, 2),
             })
 
@@ -1467,7 +1521,8 @@ def get_accessibility_routes_by_location(
 
 @app.get("/api/debug/places")
 def debug_places():
-    return list(
+
+    places = list(
         places_collection.find(
             {},
             {
@@ -1481,6 +1536,33 @@ def debug_places():
             },
         )
     )
+
+    return places
+
+    distance_km, closest_place = nearby_places[0]
+
+    routes = build_accessibility_routes_for_place(
+        place=closest_place,
+        mode=mode,
+        preferences=[],
+    )
+
+    return {
+        "latitude": latitude,
+        "longitude": longitude,
+        "mode": mode,
+        "routes": routes,
+        "sourcePlaceId": closest_place.get("id"),
+        "sourcePlaceName": closest_place.get("name"),
+        "sourceDistanceKm": round(
+            distance_km,
+            2,
+        ),
+        "notice": (
+            "Accessibility information is based on "
+            "the nearest stored accessibility location."
+        ),
+    }
 
 
 # ============================================================
@@ -1627,6 +1709,20 @@ def get_navigation_step(step: int):
 
     return NAV_STATES[step]
 
+[
+  {
+    "id": "place1",
+    "name": "Some Hospital",
+    "latitude": 19.0500,
+    "longitude": 73.0300,
+    "tags": [
+      "Step-free entrance",
+      "Ramps available"
+    ],
+    "warnings": []
+  }
+]
+
 
 # ============================================================
 # ACCESSIBILITY NAVIGATION INFORMATION
@@ -1760,11 +1856,7 @@ def create_report(
     report: ReportRequest,
     current_user=Depends(get_current_user),
 ):
-    report_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).isoformat()
-
     new_report = {
-        "id": report_id,
         "userId": current_user["id"],
         "placeId": report.placeId,
         "placeName": report.placeName,
@@ -1772,44 +1864,58 @@ def create_report(
         "longitude": report.longitude,
         "reportType": report.reportType,
         "description": report.description,
-        "source": "community",
         "status": "pending",
-        "verificationStatus": "pending",
-        "createdAt": created_at,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
     }
 
     result = reports_collection.insert_one(new_report)
 
-    report_response = {
-        key: value
-        for key, value in new_report.items()
-        if key not in ("userId", "_id")
-    }
-
-    report_response["id"] = str(result.inserted_id)
-
     return {
         "message": "Report submitted successfully",
-        "report": report_response,
+        "report": {
+            "id": str(result.inserted_id),
+            "userId": str(new_report["userId"]),
+            "placeId": new_report["placeId"],
+            "placeName": new_report["placeName"],
+            "latitude": new_report["latitude"],
+            "longitude": new_report["longitude"],
+            "reportType": new_report["reportType"],
+            "description": new_report["description"],
+            "status": new_report["status"],
+            "createdAt": new_report["createdAt"],
+        },
     }
 @app.get("/api/reports")
-def get_reports(current_user=Depends(get_current_user)):
-    return list(
+def get_reports(
+    current_user=Depends(get_current_user),
+):
+
+    reports = list(
         reports_collection.find(
-            {"userId": current_user["id"]},
-            {"_id": 0},
+            {
+                "userId": current_user["id"]
+            },
+            {
+                "_id": 0
+            },
         )
     )
 
+    return reports
 
 @app.get("/api/reports/nearby")
 def get_nearby_reports(
-    latitude: float = Query(..., ge=-90, le=90),
-    longitude: float = Query(..., ge=-180, le=180),
-    radius_km: float = Query(0.5, gt=0),
+    latitude: float = Query(...),
+    longitude: float = Query(...),
+    radius_km: float = Query(0.5),
+    current_user=Depends(get_current_user),
 ):
-    lat_delta = radius_km / 111.0
-    lng_delta = radius_km / (111.0 * max(math.cos(math.radians(latitude)), 0.01))
+    lat_delta = radius_km / 111
+
+    import math
+    lng_delta = radius_km / (
+        111 * max(math.cos(math.radians(latitude)), 0.01)
+    )
 
     reports = list(
         reports_collection.find({
@@ -1824,53 +1930,53 @@ def get_nearby_reports(
         })
     )
 
+@app.get("/api/reports/map")
+def get_map_reports(
+    south: float = Query(...),
+    west: float = Query(...),
+    north: float = Query(...),
+    east: float = Query(...),
+    current_user=Depends(get_current_user),
+):
+    reports = list(
+        reports_collection.find({
+            "latitude": {
+                "$gte": south,
+                "$lte": north,
+            },
+            "longitude": {
+                "$gte": west,
+                "$lte": east,
+            },
+        })
+    )
+
     return [
         {
-            "id": report.get("id", str(report.get("_id", ""))),
+            "id": str(report["_id"]),
             "placeName": report.get("placeName", ""),
-            "latitude": report.get("latitude"),
-            "longitude": report.get("longitude"),
+            "latitude": report["latitude"],
+            "longitude": report["longitude"],
             "reportType": report.get("reportType", ""),
             "description": report.get("description", ""),
-            "source": report.get("source", "community"),
             "status": report.get("status", "pending"),
-            "verificationStatus": report.get("verificationStatus", "pending"),
             "createdAt": report.get("createdAt", ""),
         }
         for report in reports
     ]
 
 
-@app.get("/api/osm/accessibility")
-def get_osm_accessibility(
-    latitude: float = Query(..., ge=-90, le=90),
-    longitude: float = Query(..., ge=-180, le=180),
-    radius: int = Query(1000, ge=100, le=5000),
-):
-    try:
-        points = get_osm_accessibility_points(
-            latitude=latitude,
-            longitude=longitude,
-            radius=radius,
-        )
-        return {
-            "success": True,
-            "source": "OpenStreetMap",
-            "count": len(points),
-            "points": points,
+    return [
+        {
+            "id": str(report["_id"]),
+            "placeName": report.get("placeName", ""),
+            "latitude": report["latitude"],
+            "longitude": report["longitude"],
+            "reportType": report.get("reportType", ""),
+            "description": report.get("description", ""),
+            "status": report.get("status", "pending"),
+            "createdAt": report.get("createdAt", ""),
         }
-    except requests.exceptions.Timeout:
-        raise HTTPException(
-            status_code=504,
-            detail="OpenStreetMap is taking too long to respond. Please try again.",
-        )
-    except requests.exceptions.RequestException as error:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Could not retrieve OpenStreetMap data: {str(error)}",
-        )
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Accessibility data error: {str(error)}",
-        )
+        for report in reports
+    ]
+

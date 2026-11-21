@@ -514,6 +514,145 @@ def get_places():
 
     return places
 
+# ============================================================
+# OPENSTREETMAP ACCESSIBILITY PLACES
+# ============================================================
+
+@app.get("/api/places/openstreetmap")
+def get_openstreetmap_places(
+    south: float = Query(..., ge=-90, le=90),
+    west: float = Query(..., ge=-180, le=180),
+    north: float = Query(..., ge=-90, le=90),
+    east: float = Query(..., ge=-180, le=180),
+):
+    if south >= north or west >= east:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid map boundaries",
+        )
+
+    # Limit the requested area to avoid oversized queries.
+    if north - south > 0.1 or east - west > 0.1:
+        raise HTTPException(
+            status_code=400,
+            detail="Please request a smaller map area",
+        )
+
+    bbox = f"{south},{west},{north},{east}"
+
+    query = f"""
+    [out:json][timeout:25];
+    (
+      node["wheelchair"]({bbox});
+      way["wheelchair"]({bbox});
+      relation["wheelchair"]({bbox});
+
+      node["ramp"]({bbox});
+      way["ramp"]({bbox});
+
+      node["highway"="elevator"]({bbox});
+      way["highway"="elevator"]({bbox});
+
+      node["highway"="crossing"]({bbox});
+      node["entrance"]({bbox});
+
+      node["tactile_paving"]({bbox});
+    );
+    out center tags;
+    """
+
+    try:
+        response = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data={"data": query},
+            timeout=35,
+            headers={
+                "User-Agent": "AccessNav/1.0 (+https://github.com/kruthisap/accessnav)"
+            },
+        )
+        response.raise_for_status()
+        osm_data = response.json()
+
+    except requests.RequestException:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenStreetMap data is temporarily unavailable",
+        )
+
+    accessibility_places = []
+
+    for element in osm_data.get("elements", []):
+        tags = element.get("tags", {})
+
+        if "lat" in element and "lon" in element:
+            latitude = element["lat"]
+            longitude = element["lon"]
+
+        elif "center" in element:
+            latitude = element["center"]["lat"]
+            longitude = element["center"]["lon"]
+
+        else:
+            continue
+
+        ramp = (
+            tags.get("ramp") in ["yes", "true"]
+            or tags.get("ramp:wheelchair") == "yes"
+        )
+
+        elevator = tags.get("highway") == "elevator"
+
+        accessible_entrance = (
+            "entrance" in tags
+            and tags.get("wheelchair") in ["yes", "limited"]
+        )
+
+        clear_crossing = tags.get("highway") == "crossing"
+
+        wheelchair_value = tags.get("wheelchair", "unknown")
+        wheelchair = wheelchair_value in ["yes", "limited"]
+
+        warnings = []
+
+        if wheelchair_value == "no":
+            warnings.append("Marked as not wheelchair accessible")
+
+        elif wheelchair_value == "limited":
+            warnings.append("Wheelchair access may be limited")
+
+        if tags.get("tactile_paving") == "no":
+            warnings.append("No tactile paving recorded")
+
+        feature_tags = [
+            f"{key}={value}"
+            for key, value in tags.items()
+        ]
+
+        accessibility_places.append({
+            "id": f"osm-{element['type']}-{element['id']}",
+            "name": tags.get(
+                "name",
+                "Unnamed accessibility feature"
+            ),
+            "area": tags.get(
+                "addr:suburb",
+                tags.get("addr:city", "OpenStreetMap")
+            ),
+            "position": [latitude, longitude],
+            "tags": feature_tags,
+            "warnings": warnings,
+            "wheelchair": wheelchair,
+            "ramp": ramp,
+            "elevator": elevator,
+            "accessibleEntrance": accessible_entrance,
+            "clearCrossing": clear_crossing,
+            "obstruction": False,
+        })
+
+    return accessibility_places
+
+
+
 
 @app.get("/api/places/{place_id}")
 def get_place(place_id: str):
@@ -534,6 +673,8 @@ def get_place(place_id: str):
         )
 
     return place
+
+
 
 
 # ============================================================

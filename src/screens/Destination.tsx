@@ -441,7 +441,7 @@ const contrastEnabled = highContrast || mode === 'lowvision';
   type="button"
   onClick={handleSaveToggle}
   disabled={saving}
-  className={`mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border p-3 text-sm font-bold transition ${
+  className={`mt-5 mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border p-3 text-sm font-bold transition ${
     savedId
       ? 'border-primary-200 bg-primary-50 text-primary-700'
       : 'border-slate-200 bg-white text-slate-700'

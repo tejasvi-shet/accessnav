@@ -1100,18 +1100,11 @@ useEffect(() => {
       <div className="shrink-0 bg-white px-5 pb-4 pt-5 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-100">
-            {mode === 'wheelchair' ? (
-              <Accessibility
-                size={25}
-                className="text-primary-700"
-              />
-            ) : (
-              <Eye
-                size={25}
-                className="text-primary-700"
-              />
-            )}
-          </div>
+  <MapPin
+    size={25}
+    className="text-primary-700"
+  />
+</div>
 
     <div className="min-w-0">
       <h1 className="text-xl font-extrabold text-slate-900">
